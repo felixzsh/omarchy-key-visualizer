@@ -3,7 +3,7 @@
 A tiny [Omarchy](https://omarchy.org/) plugin that shows the keys you press
 on screen. No keycap images, no animations — just the characters and
 combinations, rendered with the shell's own styles, appearing while a key is
-held and disappearing the moment it's released.
+held and lingering briefly after release.
 
 Built for keybinding tutorials and screencasts: Omarchy is a keybinding-heavy
 desktop, so a combo like `Super + Shift + G` shows up as three small chips
@@ -15,6 +15,7 @@ at the bottom of the screen.
 |----------------|--------------------------------------------|--------------|
 | `key-visualizer.lua`| Hyprland Lua config (inside the compositor)| Listens to `input.keyboard.key`, tracks the pressed combo, writes it to `$XDG_RUNTIME_DIR/omarchy-key-visualizer.json` |
 | `KeyVisualizer.qml`| Quickshell `omarchy-shell` (keep-loaded panel)| Watches the state file and renders the chips |
+| `BarWidget.qml`| Quickshell bar (per monitor)               | Keyboard glyph that pauses/resumes the display |
 
 No background daemons, no special permissions, no extra packages: the
 compositor is already the source of truth for keys, and the shell is already
@@ -38,29 +39,39 @@ omarchy plugin add /path/to/omarchy-keycaster --enable
 ```
 
 `--enable` enables it right away; without it, enable later with
-`omarchy plugin enable felixzsh.key-visualizer`. If you added from a local path,
-`omarchy plugin update felixzsh.key-visualizer` pulls your local changes into the
-installed copy.
+`omarchy plugin enable felixzsh.key-visualizer`. The plugin is a panel and a bar
+widget: the panel shows the keys, and the bar widget is a toggle — enable
+prompts for its bar section (or pass `--section right`). If you added from a
+local path, `omarchy plugin update felixzsh.key-visualizer` pulls your local
+changes into the installed copy.
 
-Then load the capture script into Hyprland's Lua config. Add this line at the
-bottom of `~/.config/hypr/hyprland.lua`:
-
-```lua
-dofile(os.getenv("HOME") .. "/.config/omarchy/plugins/felixzsh.key-visualizer/key-visualizer.lua")
-```
-
-Reload Hyprland:
-
-```bash
-hyprctl reload
-```
-
-The panel starts with the shell, so it works after the next login too.
+That's the whole install: on first load the panel appends a small guarded
+block to `~/.config/hypr/hyprland.lua` that loads the capture script into
+Hyprland's Lua config, and Hyprland auto-reloads on save. Nothing else to
+do — no manual edits, no `hyprctl reload`.
 
 ### Requirements
 
 - Hyprland with Lua config support (0.56+), as shipped by Omarchy.
 - The plugin enabled in the shell (done above).
+
+## Bar widget
+
+The keyboard glyph in the bar (right section by default) toggles the
+display: click to pause, click again to resume. While paused the glyph dims
+and keys stay off the screen — handy for presentations. The state is a flag
+file both the bar and the panel watch, so it stays in sync across monitors
+and survives shell restarts. You can also drive it over IPC:
+
+```bash
+omarchy-shell key-visualizer toggle
+omarchy-shell key-visualizer pause
+omarchy-shell key-visualizer resume
+omarchy-shell key-visualizer paused   # true | false
+```
+
+Move it with `omarchy bar move felixzsh.key-visualizer --section left` (or
+right/center).
 
 ## Behavior
 
@@ -73,16 +84,35 @@ The panel starts with the shell, so it works after the next login too.
 - Key repeat is ignored; a held key shows once.
 - After the last key is released the combo lingers briefly (1s by default,
   keyviz-style "Duration") and then vanishes in one frame — no fade.
+- In `mode: "bindings"` only combos with a modifier are shown; plain typing
+  stays off screen.
 
 ## Customize
 
-Everything lives in the plugin directory
-(`~/.config/omarchy/plugins/felixzsh.key-visualizer/`); saved changes reload
-automatically.
+On first load the panel writes `config.json` into the plugin directory
+(`~/.config/omarchy/plugins/felixzsh.key-visualizer/config.json`) with these
+defaults; edit it and the display updates on save:
+
+```json
+{
+  "mode": "all",
+  "position": "bottom-center",
+  "margin": 67,
+  "lingerMs": 1000
+}
+```
+
+| Option      | Values                                             | Default         |
+|-------------|----------------------------------------------------|-----------------|
+| `mode`      | `all` or `bindings` (only combos with a modifier)  | `all`           |
+| `position`  | `bottom-center`, `top-center`, `center`, `top-left`, `bottom-right`, … | `bottom-center` |
+| `margin`    | px from the screen edge                            | `67`            |
+| `lingerMs`  | ms a released combo stays (keyviz defaults to `5000`) | `1000`       |
+
+Deeper tweaks still live in the QML/Lua sources:
 
 | Want to change...                 | Edit                                    |
 |-----------------------------------|-----------------------------------------|
-| How long a released combo lingers | `lingerMs` in `KeyVisualizer.qml` (default `1000`; keyviz defaults to `5000`) |
 | Chip font / padding               | `chipFont`, `chipPadX/Y` in `KeyVisualizer.qml` |
 | Key labels or layout mapping      | `KEYS` / `CHARS` / `SHIFTED` tables in `key-visualizer.lua` |
 
@@ -94,12 +124,13 @@ not expanded.
 ## Status
 
 `omarchy-shell key-visualizer ping` — health check.
+`omarchy-shell key-visualizer state` — `open` while a combo is on screen.
 
 ## Roadmap
 
 - Layout-aware keysyms via `xkbcommon` instead of the static US table.
 - Mouse button display.
-- A pause toggle for presentations.
+- Per-monitor placement.
 
 ## License
 

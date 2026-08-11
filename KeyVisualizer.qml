@@ -29,6 +29,25 @@ Item {
   // session after a restart) so a stale combo never sticks on screen.
   readonly property int maxStateAgeMs: 1500
 
+  // Options read from config.json in the plugin folder (created with
+  // defaults on first run, hot-reloaded on save):
+  //   mode     "all" | "bindings" — bindings only shows combos with a
+  //            modifier, ignoring plain typing (tutorial mode).
+  //   position bottom-center (default) or any top/bottom + left/center/
+  //            right combination, keyviz-style.
+  //   margin   distance from the screen edge in px (default 67).
+  //   lingerMs how long a released combo stays (default 1000).
+  property string mode: "all"
+  property string position: "bottom-center"
+  property int margin: Style.space(67)
+  readonly property var modLabels: ["Super", "Ctrl", "Alt", "Shift", "Menu", "AltGr"]
+
+  property var manifest: ({})
+  readonly property string configPath: {
+    var dir = root.manifest && root.manifest.__sourceDir ? root.manifest.__sourceDir : ""
+    return dir ? dir + "/config.json" : ""
+  }
+
   readonly property string statePath: {
     var runtime = Quickshell.env("XDG_RUNTIME_DIR")
     return (runtime && runtime.length > 0 ? runtime : "/tmp") + "/omarchy-key-visualizer.json"
@@ -90,7 +109,14 @@ Item {
           if (age <= Math.ceil(root.maxStateAgeMs / 1000)) next = parsed.keys
         }
       } catch (e) {}
-    }    if (next.length === 0) {
+    }    if (next.length > 0 && root.mode === "bindings") {
+      var hasMod = false
+      for (var i = 0; i < next.length; i++) {
+        if (root.modLabels.indexOf(next[i]) !== -1) { hasMod = true; break }
+      }
+      if (!hasMod) next = []
+    }
+    if (next.length === 0) {
       // Keys were released: keep the last combo on screen for the linger
       // window, then clear it. A fresh press restarts the timer below.
       hideTimer.restart()
@@ -145,6 +171,48 @@ Item {
 
   Process {
     id: pauseToggleProc
+  }
+
+  // --------------------------------------------------------------- options
+
+  function applyConfig(raw) {
+    var cfg = {}
+    try { cfg = JSON.parse(raw || "{}") } catch (e) {}
+    root.mode = cfg.mode === "bindings" ? "bindings" : "all"
+    if (typeof cfg.position === "string" && cfg.position.length > 0) root.position = cfg.position
+    if (isFinite(cfg.margin) && cfg.margin >= 0) root.margin = Math.round(cfg.margin)
+    if (isFinite(cfg.lingerMs) && cfg.lingerMs >= 0) root.lingerMs = Math.round(cfg.lingerMs)
+  }
+
+  function seedConfig() {
+    var defaults = '{"mode": "all", "position": "bottom-center", "margin": 67, "lingerMs": 1000}'
+    seedConfigProc.command = ["sh", "-c",
+      "printf '%s\\n' '" + defaults + "' > " + Util.shellQuote(root.configPath)]
+    seedConfigProc.running = true
+  }
+
+  Process {
+    id: seedConfigProc
+  }
+
+  property bool configSeeded: false
+
+  FileView {
+    id: configFile
+    path: root.configPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: {
+      root.applyConfig(text())
+      // First run: write the defaults so the file is discoverable and the
+      // options can be tuned without hunting for them. Guarded because the
+      // shell injects `manifest` after instantiation, which re-fires this.
+      if (!root.configSeeded) {
+        root.configSeeded = true
+        if (root.configPath !== "" && text() === "") root.seedConfig()
+      }
+    }
+    onFileChanged: reload()
   }
 
   // ------------------------------------------------- capture hook injection
@@ -240,9 +308,18 @@ Item {
       visible: root.keys.length > 0
       width: card.borderLeft + root.cardPad + root.contentWidth() + root.cardPad + card.borderRight
       height: card.borderTop + root.cardPad + root.chipHeight + root.cardPad + card.borderBottom
-      anchors.horizontalCenter: parent.horizontalCenter
-      anchors.bottom: parent.bottom
-      anchors.bottomMargin: Style.space(67)
+      x: {
+        var p = root.position
+        if (p.indexOf("left") !== -1) return root.margin
+        if (p.indexOf("right") !== -1) return parent.width - width - root.margin
+        return Math.round((parent.width - width) / 2)
+      }
+      y: {
+        var p = root.position
+        if (p.indexOf("top") !== -1) return root.margin
+        if (p.indexOf("bottom") !== -1) return parent.height - height - root.margin
+        return Math.round((parent.height - height) / 2)
+      }
       color: Util.alpha(Color.popups.background, 0.97)
       borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
       radius: Style.cornerRadius
