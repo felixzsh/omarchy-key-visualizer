@@ -145,6 +145,13 @@ local function emit()
   end
 end
 
+-- Combos: a combination of keys is treated as a unit. The display only
+-- updates on key-down (the combo grows as you press) and when the last key
+-- is released (the empty payload starts the panel's linger with the last
+-- full combo). Intermediate releases never shrink the display, so the order
+-- in which you let go of a shortcut doesn't matter: Ctrl+Shift+N stays
+-- Ctrl+Shift+N whether you release Ctrl, Shift, or N first.
+--
 -- state: 0 = released, 1 = pressed, 2 = repeat (ignored).
 hl.on("input.keyboard.key", function(keycode, timeMs, state)
   if state == 2 then return end
@@ -158,6 +165,7 @@ hl.on("input.keyboard.key", function(keycode, timeMs, state)
       end
       if not found then combo[#combo + 1] = keycode end
     end
+    emit()
   else
     pressed[keycode] = false
     if not MODS[keycode] then
@@ -168,7 +176,12 @@ hl.on("input.keyboard.key", function(keycode, timeMs, state)
         end
       end
     end
+    -- Only emit when the last key goes up: intermediate releases keep the
+    -- full combo on screen (the panel lingers it after the empty payload).
+    local any_down = false
+    for _, down in pairs(pressed) do
+      if down then any_down = true break end
+    end
+    if not any_down then emit() end
   end
-
-  emit()
 end)

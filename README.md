@@ -104,12 +104,17 @@ plugin, not just this one.
 - **Typing** — shows just the character: `g`, `G`, `!`, `5`.
 - **Modifier combos** — shows every modifier plus the key: `Super Shift G`,
   `Ctrl C`, `Super Enter`.
+- **Combos are a unit** — a combination stays intact no matter the order you
+  release it: press `Ctrl Shift N`, let go of `Ctrl` first, then `Shift`,
+  then `N`, and the display keeps showing `Ctrl Shift N` the whole time
+  (keyviz shrinks key-by-key; this plugin treats the chord as one unit).
 - **Non-printing keys** — labeled: `Esc`, `Tab`, `F1`, arrows, `Space`.
 - Modifiers that produce the shifted character (`Shift` with a letter) are
   folded into the character itself: `Shift + 1` shows `!`.
 - Key repeat is ignored; a held key shows once.
 - After the last key is released the combo lingers briefly (1s by default,
-  keyviz-style "Duration") and then vanishes in one frame — no fade.
+  keyviz-style "Duration") and then vanishes in one frame — no fade. The
+  lingering combo is always the last full one, never a partial release state.
 - In `mode: "bindings"` only combos with a modifier are shown; plain typing
   stays off screen.
 
