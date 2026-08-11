@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "felixzsh.key-visualizer",
   "name": "Key Visualizer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Shows the keys you press on screen. Great for keybinding tutorials, demos, and screencasts.",
   "kinds": ["panel"],
   "keepLoaded": true,

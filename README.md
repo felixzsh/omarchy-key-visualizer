@@ -71,7 +71,8 @@ The panel starts with the shell, so it works after the next login too.
 - Modifiers that produce the shifted character (`Shift` with a letter) are
   folded into the character itself: `Shift + 1` shows `!`.
 - Key repeat is ignored; a held key shows once.
-- The combo disappears immediately after the last key is released.
+- After the last key is released the combo lingers briefly (1s by default,
+  keyviz-style "Duration") and then vanishes in one frame — no fade.
 
 ## Customize
 
@@ -81,7 +82,7 @@ automatically.
 
 | Want to change...                 | Edit                                    |
 |-----------------------------------|-----------------------------------------|
-| How long a released combo lingers | `hideDelayMs` in `KeyVisualizer.qml` (default `120`) |
+| How long a released combo lingers | `lingerMs` in `KeyVisualizer.qml` (default `1000`; keyviz defaults to `5000`) |
 | Chip font / padding               | `chipFont`, `chipPadX/Y` in `KeyVisualizer.qml` |
 | Key labels or layout mapping      | `KEYS` / `CHARS` / `SHIFTED` tables in `key-visualizer.lua` |
 

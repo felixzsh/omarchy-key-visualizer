@@ -10,7 +10,7 @@ import qs.Ui
 // to the compositor's key events and writes the current combination to
 // $XDG_RUNTIME_DIR/omarchy-key-visualizer.json. This panel watches that file
 // and renders. No images, no animations: the combo appears while held and
-// disappears the moment the keys are released.
+// lingers briefly after release (like keyviz's Duration), then vanishes.
 //
 // On first load the panel also appends a small guarded block to
 // ~/.config/hypr/hyprland.lua that dofiles the capture script, so install
@@ -21,9 +21,10 @@ Item {
 
   property bool opened: false
   property var keys: []
-  // Grace period after the last key is released. Small enough to feel
-  // immediate, long enough that a quick tap is still readable.
-  property int hideDelayMs: 120
+  // How long the last combination stays on screen after the keys are
+  // released (keyviz's "Duration"; keyviz defaults to 5000ms). The combo
+  // lingers intact, then vanishes in one frame — no fade.
+  property int lingerMs: 1000
   // Drop state written more than this long ago (e.g. from a previous shell
   // session after a restart) so a stale combo never sticks on screen.
   readonly property int maxStateAgeMs: 1500
@@ -79,19 +80,24 @@ Item {
         if (age <= Math.ceil(root.maxStateAgeMs / 1000)) next = parsed.keys
       }
     } catch (e) {}
-    root.keys = next
     if (next.length === 0) {
+      // Keys were released: keep the last combo on screen for the linger
+      // window, then clear it. A fresh press restarts the timer below.
       hideTimer.restart()
     } else {
       hideTimer.stop()
+      root.keys = next
       root.opened = true
     }
   }
 
   Timer {
     id: hideTimer
-    interval: root.hideDelayMs
-    onTriggered: root.opened = false
+    interval: root.lingerMs
+    onTriggered: {
+      root.keys = []
+      root.opened = false
+    }
   }
 
   FileView {
