@@ -51,7 +51,6 @@ BarWidget {
     text: "\uF030C" // nf-md-keyboard_outline
     fontSize: Style.font.icon
     horizontalMargin: 6
-    active: !root.paused
     dimmed: root.paused
     tooltipText: root.paused
       ? "Key Visualizer — paused (click to resume)"
