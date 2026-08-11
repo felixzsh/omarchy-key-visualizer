@@ -9,6 +9,10 @@ Built for keybinding tutorials and screencasts: Omarchy is a keybinding-heavy
 desktop, so a combo like `Super + Shift + G` shows up as three small chips
 at the bottom of the screen.
 
+## Preview
+
+![Key Visualizer preview](preview.png)
+
 ## How it works
 
 | Piece          | Where it runs                              | What it does |
