@@ -73,11 +73,14 @@ Item {
   readonly property int chipGap: Style.space(8)
   readonly property int chipPadX: Style.space(9)
   readonly property int chipPadY: Style.space(4)
-  readonly property int chipHeight: Math.ceil(chipTextMetrics.height) + 2 * chipPadY
+  readonly property int chipHeight: Math.ceil(chipFontMetrics.height) + 2 * chipPadY
 
+  // Stateless measurement: FontMetrics.advanceWidth(text) returns the
+  // width for the given string directly. The previous shared TextMetrics
+  // (text set imperatively inside the width bindings) went stale from the
+  // third chip onwards, collapsing every container to single-char width.
   function chipWidth(label) {
-    chipMetrics.text = String(label)
-    return Math.ceil(chipMetrics.advanceWidth) + 2 * chipPadX
+    return Math.ceil(chipFontMetrics.advanceWidth(String(label))) + 2 * chipPadX
   }
 
   function contentWidth() {
@@ -86,13 +89,8 @@ Item {
     return w + Math.max(0, root.keys.length - 1) * chipGap
   }
 
-  TextMetrics {
-    id: chipMetrics
-    font: chipFont
-  }
-
   FontMetrics {
-    id: chipTextMetrics
+    id: chipFontMetrics
     font: chipFont
   }
 
