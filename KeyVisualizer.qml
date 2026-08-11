@@ -34,6 +34,15 @@ Item {
     return (runtime && runtime.length > 0 ? runtime : "/tmp") + "/omarchy-key-visualizer.json"
   }
 
+  // Pause flag shared with the bar widget: while the file holds "1" the
+  // display is frozen (keys are ignored). The bar button writes/removes the
+  // file; both sides watch it, so a click on any monitor updates all of them.
+  property bool paused: false
+  readonly property string pausePath: {
+    var runtime = Quickshell.env("XDG_RUNTIME_DIR")
+    return (runtime && runtime.length > 0 ? runtime : "/tmp") + "/omarchy-key-visualizer.paused"
+  }
+
   // ------------------------------------------------------------- layout
 
   readonly property int cardPad: Style.space(10)
@@ -73,14 +82,15 @@ Item {
 
   function apply() {
     var next = []
-    try {
-      var parsed = JSON.parse(stateFile.text())
-      if (parsed && Array.isArray(parsed.keys)) {
-        var age = Math.floor(Date.now() / 1000) - (parsed.t || 0)
-        if (age <= Math.ceil(root.maxStateAgeMs / 1000)) next = parsed.keys
-      }
-    } catch (e) {}
-    if (next.length === 0) {
+    if (!root.paused) {
+      try {
+        var parsed = JSON.parse(stateFile.text())
+        if (parsed && Array.isArray(parsed.keys)) {
+          var age = Math.floor(Date.now() / 1000) - (parsed.t || 0)
+          if (age <= Math.ceil(root.maxStateAgeMs / 1000)) next = parsed.keys
+        }
+      } catch (e) {}
+    }    if (next.length === 0) {
       // Keys were released: keep the last combo on screen for the linger
       // window, then clear it. A fresh press restarts the timer below.
       hideTimer.restart()
@@ -107,6 +117,34 @@ Item {
     printErrors: false
     onLoaded: root.apply()
     onFileChanged: reload()
+  }
+
+  FileView {
+    id: pauseFile
+    path: root.pausePath
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.paused = (text() === "1")
+    onFileChanged: reload()
+  }
+
+  onPausedChanged: if (root.paused) {
+    hideTimer.stop()
+    root.keys = []
+    root.opened = false
+  }
+
+  function setPaused(p) {
+    if (p === root.paused) return
+    var cmd = p
+      ? "printf 1 > " + Util.shellQuote(root.pausePath)
+      : "rm -f " + Util.shellQuote(root.pausePath)
+    pauseToggleProc.command = ["sh", "-c", cmd]
+    pauseToggleProc.running = true
+  }
+
+  Process {
+    id: pauseToggleProc
   }
 
   // ------------------------------------------------- capture hook injection
@@ -177,6 +215,10 @@ Item {
     target: "key-visualizer"
     function ping(): string { return "ok" }
     function state(): string { return root.opened ? "open" : "closed" }
+    function paused(): string { return root.paused ? "true" : "false" }
+    function pause(): string { root.setPaused(true); return "ok" }
+    function resume(): string { root.setPaused(false); return "ok" }
+    function toggle(): string { root.setPaused(!root.paused); return "ok" }
   }
 
   // ------------------------------------------------------------- display
