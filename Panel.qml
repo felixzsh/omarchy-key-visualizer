@@ -41,9 +41,12 @@ Panel {
 
   function setPaused(p) {
     if (p === root.paused) return
+    // The flag file is always rewritten with "0" or "1" — never deleted:
+    // the FileView watcher fires on content changes but not on deletion, so
+    // a removed flag would leave the toggle stuck.
     var cmd = p
       ? "printf 1 > " + Util.shellQuote(root.pausePath)
-      : "rm -f " + Util.shellQuote(root.pausePath)
+      : "printf 0 > " + Util.shellQuote(root.pausePath)
     toggleProc.command = ["sh", "-c", cmd]
     toggleProc.running = true
   }

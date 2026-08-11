@@ -166,9 +166,11 @@ Item {
 
   function setPaused(p) {
     if (p === root.paused) return
+    // Always rewrite the flag with "0" or "1", never delete it: the
+    // FileView watcher fires on content changes but not on deletion.
     var cmd = p
       ? "printf 1 > " + Util.shellQuote(root.pausePath)
-      : "rm -f " + Util.shellQuote(root.pausePath)
+      : "printf 0 > " + Util.shellQuote(root.pausePath)
     pauseToggleProc.command = ["sh", "-c", cmd]
     pauseToggleProc.running = true
   }
