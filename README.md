@@ -57,11 +57,17 @@ do — no manual edits, no `hyprctl reload`.
 
 ## Bar widget
 
-The keyboard glyph in the bar (right section by default) toggles the
-display: click to pause, click again to resume. While paused the glyph dims
-and keys stay off the screen — handy for presentations. The state is a flag
-file both the bar and the panel watch, so it stays in sync across monitors
-and survives shell restarts. You can also drive it over IPC:
+The keyboard glyph in the bar (right section by default) opens a small
+menu, following the native bar-widget pattern:
+
+- **Show keys** — toggle that pauses/resumes the display (useful mid-demo).
+  The glyph button itself does not toggle; the menu does.
+- **Mode** — `All keys` or `Bindings only` (only combos with a modifier).
+- **Position** — `Bottom`, `Top`, or `Center` of the screen.
+
+The menu writes the same pause flag and `config.json` that the display
+panel watches, so it stays in sync across monitors. You can also drive it
+over IPC (routed to the display panel):
 
 ```bash
 omarchy-shell key-visualizer toggle
@@ -70,8 +76,22 @@ omarchy-shell key-visualizer resume
 omarchy-shell key-visualizer paused   # true | false
 ```
 
-Move it with `omarchy bar move felixzsh.key-visualizer --section left` (or
-right/center).
+Move the glyph with `omarchy bar move felixzsh.key-visualizer --section left`
+(or right/center).
+
+### After installing: no restart needed
+
+If the glyph does not appear in the bar right after `omarchy plugin enable`,
+run a plugin rescan instead of restarting the whole shell:
+
+```bash
+omarchy-shell shell rescanPlugins
+```
+
+The shell's enable flow persists the bar layout before it registers new
+third-party widgets (a shell-side ordering detail, not specific to this
+plugin); a rescan registers them. A full `omarchy restart shell` also
+works.
 
 ## Behavior
 
