@@ -7,7 +7,7 @@
 --
 -- Install: add one line to ~/.config/hypr/hyprland.lua (at the bottom):
 --
---   dofile(os.getenv("HOME") .. "/.config/omarchy/plugins/omarchy.key-visualizer/key-visualizer.lua")
+--   dofile(os.getenv("HOME") .. "/.config/omarchy/plugins/felixzsh.key-visualizer/key-visualizer.lua")
 --
 -- then reload Hyprland (`hyprctl reload`). Requires Hyprland with Lua
 -- config support (0.56+).

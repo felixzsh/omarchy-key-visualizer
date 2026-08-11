@@ -22,16 +22,31 @@ running.
 
 ## Install
 
+Validate the folder first (optional but handy for plugin authors):
+
 ```bash
-omarchy plugin add https://github.com/YOU/omarchy-keycaster
-omarchy plugin enable omarchy.key-visualizer
+omarchy plugin validate ./omarchy-keycaster
 ```
+
+Then add it — a local path works as well as a git URL (`plugin add` clones
+with git, and `git clone` accepts local paths):
+
+```bash
+omarchy plugin add /path/to/omarchy-keycaster --enable
+# or once published:
+# omarchy plugin add https://github.com/YOU/omarchy-keycaster --enable
+```
+
+`--enable` enables it right away; without it, enable later with
+`omarchy plugin enable felixzsh.key-visualizer`. If you added from a local path,
+`omarchy plugin update felixzsh.key-visualizer` pulls your local changes into the
+installed copy.
 
 Then load the capture script into Hyprland's Lua config. Add this line at the
 bottom of `~/.config/hypr/hyprland.lua`:
 
 ```lua
-dofile(os.getenv("HOME") .. "/.config/omarchy/plugins/omarchy.key-visualizer/key-visualizer.lua")
+dofile(os.getenv("HOME") .. "/.config/omarchy/plugins/felixzsh.key-visualizer/key-visualizer.lua")
 ```
 
 Reload Hyprland:
@@ -61,7 +76,7 @@ The panel starts with the shell, so it works after the next login too.
 ## Customize
 
 Everything lives in the plugin directory
-(`~/.config/omarchy/plugins/omarchy.key-visualizer/`); saved changes reload
+(`~/.config/omarchy/plugins/felixzsh.key-visualizer/`); saved changes reload
 automatically.
 
 | Want to change...                 | Edit                                    |

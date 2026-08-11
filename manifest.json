@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "omarchy.key-visualizer",
+  "id": "felixzsh.key-visualizer",
   "name": "Key Visualizer",
   "version": "1.0.0",
   "description": "Shows the keys you press on screen. Great for keybinding tutorials, demos, and screencasts.",
