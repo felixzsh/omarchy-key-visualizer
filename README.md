@@ -26,16 +26,16 @@ running.
 Validate the folder first (optional but handy for plugin authors):
 
 ```bash
-omarchy plugin validate ./omarchy-keycaster
+omarchy plugin validate ./omarchy-key-visualizer
 ```
 
 Then add it — a local path works as well as a git URL (`plugin add` clones
 with git, and `git clone` accepts local paths):
 
 ```bash
-omarchy plugin add /path/to/omarchy-keycaster --enable
+omarchy plugin add /path/to/omarchy-key-visualizer --enable
 # or once published:
-# omarchy plugin add https://github.com/YOU/omarchy-keycaster --enable
+# omarchy plugin add https://github.com/YOU/omarchy-key-visualizer --enable
 ```
 
 `--enable` enables it right away; without it, enable later with
