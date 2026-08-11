@@ -28,12 +28,14 @@ Panel {
   property int margin: 67
   property int lingerMs: 1000
 
-  readonly property string pluginDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/felixzsh.key-visualizer"
+  // Config lives outside the plugin folder (the shell reloads all plugin
+  // code on any file change under ~/.config/omarchy/plugins/), so editing it
+  // updates the display live instead of restarting the plugin.
+  readonly property string configPath: Quickshell.env("HOME") + "/.config/omarchy/key-visualizer.json"
   readonly property string pausePath: {
     var runtime = Quickshell.env("XDG_RUNTIME_DIR")
     return (runtime && runtime.length > 0 ? runtime : "/tmp") + "/omarchy-key-visualizer.paused"
   }
-  readonly property string configPath: root.pluginDir + "/config.json"
 
   // ------------------------------------------------------------- pause
 

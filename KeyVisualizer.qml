@@ -42,11 +42,15 @@ Item {
   property int margin: Style.space(67)
   readonly property var modLabels: ["Super", "Ctrl", "Alt", "Shift", "Menu", "AltGr"]
 
-  property var manifest: ({})
-  readonly property string configPath: {
-    var dir = root.manifest && root.manifest.__sourceDir ? root.manifest.__sourceDir : ""
-    return dir ? dir + "/config.json" : ""
-  }
+  // Options live at ~/.config/omarchy/key-visualizer.json rather than inside the
+  // plugin folder on purpose: the shell watches every file under
+  // ~/.config/omarchy/plugins/ and reloads all plugin code on any change, so
+  // a config edit there would tear down and rebuild the panel. Editing this
+  // file updates the display live.
+  readonly property string configPath: Quickshell.env("HOME") + "/.config/omarchy/key-visualizer.json"
+  // Pre-1.3.1 config lived in the watched plugin dir; migrated once on first
+  // load after the move.
+  readonly property string legacyConfigPath: Quickshell.env("HOME") + "/.config/omarchy/plugins/felixzsh.key-visualizer/config.json"
 
   readonly property string statePath: {
     var runtime = Quickshell.env("XDG_RUNTIME_DIR")
@@ -184,15 +188,20 @@ Item {
     if (isFinite(cfg.lingerMs) && cfg.lingerMs >= 0) root.lingerMs = Math.round(cfg.lingerMs)
   }
 
-  function seedConfig() {
+  function migrateConfig() {
+    // First load with the new location: carry over values from the old
+    // plugin-dir config (if any) and remove it, or seed the defaults.
     var defaults = '{"mode": "all", "position": "bottom-center", "margin": 67, "lingerMs": 1000}'
-    seedConfigProc.command = ["sh", "-c",
-      "printf '%s\\n' '" + defaults + "' > " + Util.shellQuote(root.configPath)]
-    seedConfigProc.running = true
+    migrateProc.command = ["sh", "-c",
+      "if [ -f " + Util.shellQuote(root.legacyConfigPath) + " ]; then "
+      + "cp " + Util.shellQuote(root.legacyConfigPath) + " " + Util.shellQuote(root.configPath) + "; "
+      + "rm -f " + Util.shellQuote(root.legacyConfigPath) + "; "
+      + "else printf '%s\\n' '" + defaults + "' > " + Util.shellQuote(root.configPath) + "; fi"]
+    migrateProc.running = true
   }
 
   Process {
-    id: seedConfigProc
+    id: migrateProc
   }
 
   property bool configSeeded: false
@@ -209,7 +218,7 @@ Item {
       // shell injects `manifest` after instantiation, which re-fires this.
       if (!root.configSeeded) {
         root.configSeeded = true
-        if (root.configPath !== "" && text() === "") root.seedConfig()
+        if (root.configPath !== "" && text() === "") root.migrateConfig()
       }
     }
     onFileChanged: reload()
