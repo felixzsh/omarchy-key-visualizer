@@ -153,7 +153,10 @@ Panel {
           checked: !root.paused
           foreground: Color.popups.text
           accent: Color.accent
-          onToggled: root.setPaused(!checked)
+          // ToggleSwitch does not flip `checked` itself — it only emits
+          // toggled() and the caller owns the value. Flip the real state;
+          // the checked binding follows.
+          onToggled: root.setPaused(!root.paused)
         }
       }
 
