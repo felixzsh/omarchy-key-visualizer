@@ -65,6 +65,9 @@ menu, following the native bar-widget pattern:
 - **Mode** — `All keys` or `Bindings only` (only combos with a modifier).
 - **Position** — a dropdown with all nine placements (top/middle/bottom
   × left/center/right) of the screen.
+- **Linger** — a numeric field (wheel, +/− buttons, or typing) for how long
+  a released combo stays, 0–10s in 500ms steps; `0` keeps the last combo on
+  screen until the next key.
 
 The menu writes the same pause flag and `config.json` that the display
 panel watches, so it stays in sync across monitors. You can also drive it

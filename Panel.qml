@@ -219,6 +219,19 @@ Panel {
         ]
         onChanged: function(v) { root.writeConfig({ position: v }) }
       }
+
+      // Linger --------------------------------------------------------
+      NumberField {
+        id: lingerField
+        width: parent.width
+        label: "Linger"
+        value: root.lingerMs
+        from: 0
+        to: 10000
+        stepSize: 500
+        // 0 = always show (keep the last combo until the next key).
+        onModified: function(v) { root.writeConfig({ lingerMs: v }) }
+      }
     }
   }
 }
