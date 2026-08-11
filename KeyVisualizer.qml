@@ -23,7 +23,8 @@ Item {
   property var keys: []
   // How long the last combination stays on screen after the keys are
   // released (keyviz's "Duration"; keyviz defaults to 5000ms). The combo
-  // lingers intact, then vanishes in one frame — no fade.
+  // lingers intact, then vanishes in one frame — no fade. 0 means "always
+  // show": the last combo stays until the next key replaces it.
   property int lingerMs: 1000
   // Drop state written more than this long ago (e.g. from a previous shell
   // session after a restart) so a stale combo never sticks on screen.
@@ -122,8 +123,10 @@ Item {
     }
     if (next.length === 0) {
       // Keys were released: keep the last combo on screen for the linger
-      // window, then clear it. A fresh press restarts the timer below.
-      hideTimer.restart()
+      // window, then clear it. lingerMs 0 means "always show": the last
+      // combo stays until the next key replaces it.
+      if (root.lingerMs > 0) hideTimer.restart()
+      else hideTimer.stop()
     } else {
       hideTimer.stop()
       root.keys = next
@@ -135,6 +138,7 @@ Item {
     id: hideTimer
     interval: root.lingerMs
     onTriggered: {
+      if (root.lingerMs <= 0) return // always-show mode never auto-clears
       root.keys = []
       root.opened = false
     }

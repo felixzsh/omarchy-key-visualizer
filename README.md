@@ -116,6 +116,8 @@ plugin, not just this one.
 - After the last key is released the combo lingers briefly (1s by default,
   keyviz-style "Duration") and then vanishes in one frame — no fade. The
   lingering combo is always the last full one, never a partial release state.
+  `lingerMs: 0` means "always show": the last combo stays on screen until
+  the next key replaces it.
 - In `mode: "bindings"` only combos with a modifier are shown; plain typing
   stays off screen.
 
@@ -141,7 +143,7 @@ the plugin on every edit. Editing this file updates the display live:
 | `mode`      | `all` or `bindings` (only combos with a modifier)  | `all`           |
 | `position`  | any of the nine: `top-left` … `bottom-right`, plus `center` | `bottom-center` |
 | `margin`    | px from the screen edge                            | `67`            |
-| `lingerMs`  | ms a released combo stays (keyviz defaults to `5000`) | `1000`       |
+| `lingerMs`  | ms a released combo stays; `0` keeps it until the next key (keyviz defaults to `5000`) | `1000`       |
 
 Deeper tweaks still live in the QML/Lua sources:
 
