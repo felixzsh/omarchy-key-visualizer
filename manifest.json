@@ -2,17 +2,20 @@
   "schemaVersion": 1,
   "id": "felixzsh.key-visualizer",
   "name": "Key Visualizer",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Shows the keys you press on screen. Great for keybinding tutorials, demos, and screencasts.",
-  "kinds": ["panel", "bar-widget"],
+  "kinds": [
+    "panel",
+    "bar-widget"
+  ],
   "keepLoaded": true,
   "entryPoints": {
     "panel": "KeyVisualizer.qml",
-    "barWidget": "BarWidget.qml"
+    "barWidget": "Panel.qml"
   },
   "barWidget": {
     "displayName": "Key Visualizer",
-    "description": "Pause or resume the on-screen key display",
+    "description": "Toggle the key display and its options",
     "category": "Tools",
     "allowMultiple": false,
     "defaultSection": "right"
