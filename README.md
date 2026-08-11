@@ -63,7 +63,8 @@ menu, following the native bar-widget pattern:
 - **Show keys** — toggle that pauses/resumes the display (useful mid-demo).
   The glyph button itself does not toggle; the menu does.
 - **Mode** — `All keys` or `Bindings only` (only combos with a modifier).
-- **Position** — `Bottom`, `Top`, or `Center` of the screen.
+- **Position** — a dropdown with all nine placements (top/middle/bottom
+  × left/center/right) of the screen.
 
 The menu writes the same pause flag and `config.json` that the display
 panel watches, so it stays in sync across monitors. You can also drive it
@@ -138,7 +139,7 @@ the plugin on every edit. Editing this file updates the display live:
 | Option      | Values                                             | Default         |
 |-------------|----------------------------------------------------|-----------------|
 | `mode`      | `all` or `bindings` (only combos with a modifier)  | `all`           |
-| `position`  | `bottom-center`, `top-center`, `center`, `top-left`, `bottom-right`, … | `bottom-center` |
+| `position`  | any of the nine: `top-left` … `bottom-right`, plus `center` | `bottom-center` |
 | `margin`    | px from the screen edge                            | `67`            |
 | `lingerMs`  | ms a released combo stays (keyviz defaults to `5000`) | `1000`       |
 

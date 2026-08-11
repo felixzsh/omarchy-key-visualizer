@@ -201,47 +201,23 @@ Panel {
       }
 
       // Position ------------------------------------------------------
-      Item {
+      Dropdown {
+        id: positionDropdown
         width: parent.width
-        height: positionButtons.height
-
-        Text {
-          anchors.left: parent.left
-          anchors.verticalCenter: parent.verticalCenter
-          text: "Position"
-          font.family: Style.font.family
-          font.pixelSize: Style.font.body
-          color: Color.popups.text
-        }
-
-        Row {
-          id: positionButtons
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.spacing.xs
-
-          Button {
-            text: "Bottom"
-            selected: root.position.indexOf("bottom") !== -1
-            foreground: Color.popups.text
-            accent: Color.accent
-            onClicked: root.writeConfig({ position: "bottom-center" })
-          }
-          Button {
-            text: "Top"
-            selected: root.position.indexOf("top") !== -1
-            foreground: Color.popups.text
-            accent: Color.accent
-            onClicked: root.writeConfig({ position: "top-center" })
-          }
-          Button {
-            text: "Center"
-            selected: root.position === "center"
-            foreground: Color.popups.text
-            accent: Color.accent
-            onClicked: root.writeConfig({ position: "center" })
-          }
-        }
+        label: "Position"
+        value: root.position
+        options: [
+          { value: "top-left", label: "Top left" },
+          { value: "top-center", label: "Top center" },
+          { value: "top-right", label: "Top right" },
+          { value: "center-left", label: "Middle left" },
+          { value: "center-center", label: "Middle center" },
+          { value: "center-right", label: "Middle right" },
+          { value: "bottom-left", label: "Bottom left" },
+          { value: "bottom-center", label: "Bottom center" },
+          { value: "bottom-right", label: "Bottom right" }
+        ]
+        onChanged: function(v) { root.writeConfig({ position: v }) }
       }
     }
   }
