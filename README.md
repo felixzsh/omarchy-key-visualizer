@@ -90,8 +90,14 @@ omarchy-shell shell rescanPlugins
 
 The shell's enable flow persists the bar layout before it registers new
 third-party widgets (a shell-side ordering detail, not specific to this
-plugin); a rescan registers them. A full `omarchy restart shell` also
-works.
+plugin); a rescan registers them.
+
+**One caveat**: the plugin reload pipeline is debounced and can leave a
+stale component in the running shell — especially after rapid uninstall +
+reinstall cycles or editing plugin files. If a change you deployed does not
+take effect (old behavior persists), run `omarchy restart shell` once; that
+unconditionally loads everything from disk. This applies to any third-party
+plugin, not just this one.
 
 ## Behavior
 
