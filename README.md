@@ -109,9 +109,11 @@ works.
 
 ## Customize
 
-On first load the panel writes `config.json` into the plugin directory
-(`~/.config/omarchy/plugins/felixzsh.key-visualizer/config.json`) with these
-defaults; edit it and the display updates on save:
+Options live in `~/.config/omarchy/key-visualizer.json` (created with the
+defaults below on first run). It sits **outside** the plugin folder on
+purpose: the shell reloads all plugin code whenever any file under
+`~/.config/omarchy/plugins/` changes, so a config file there would restart
+the plugin on every edit. Editing this file updates the display live:
 
 ```json
 {
