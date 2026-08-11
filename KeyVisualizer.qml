@@ -11,6 +11,11 @@ import qs.Ui
 // $XDG_RUNTIME_DIR/omarchy-key-visualizer.json. This panel watches that file
 // and renders. No images, no animations: the combo appears while held and
 // disappears the moment the keys are released.
+//
+// On first load the panel also appends a small guarded block to
+// ~/.config/hypr/hyprland.lua that dofiles the capture script, so install
+// is just add + enable; Hyprland auto-reloads its config on save. The
+// block no-ops if the plugin folder is later removed.
 Item {
   id: root
 
@@ -95,6 +100,65 @@ Item {
     watchChanges: true
     printErrors: false
     onLoaded: root.apply()
+    onFileChanged: reload()
+  }
+
+  // ------------------------------------------------- capture hook injection
+  //
+  // The capture script (key-visualizer.lua) must run inside Hyprland's Lua
+  // config, but the plugin cannot register itself there — the user owns
+  // hyprland.lua. On first load we append a small guarded block that
+  // dofiles the script; Hyprland auto-reloads its config on save, so the
+  // whole install is: add + enable. The block is idempotent and no-ops if
+  // the plugin folder is later removed, so uninstalling never breaks the
+  // config.
+
+  readonly property string captureMarker: "-- [key-visualizer] capture hook"
+  readonly property string captureBlock: {
+    var lines = [
+      "",
+      "-- [key-visualizer] capture hook (managed by the plugin; safe to remove)",
+      'local kc_path = os.getenv("HOME") .. "/.config/omarchy/plugins/felixzsh.key-visualizer/key-visualizer.lua"',
+      'local kc_file = io.open(kc_path, "r")',
+      'if kc_file then kc_file:close(); dofile(kc_path) end',
+      ""
+    ]
+    return lines.join("\n")
+  }
+
+  function maybeInjectCapture(raw) {
+    if (!raw) return
+    if (raw.indexOf(root.captureMarker) !== -1) return
+    var kept = []
+    var lines = raw.split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      // Drop an older plain dofile line (manual installs, previous versions)
+      // so the block below is the only reference and stays upgradeable.
+      if (lines[i].indexOf("key-visualizer.lua") !== -1) continue
+      kept.push(lines[i])
+    }
+    console.log("key-visualizer: injecting capture hook into hyprland.lua")
+    hyprConfFile.setText(kept.join("\n") + root.captureBlock)
+    injectReloadTimer.start()
+  }
+
+  Timer {
+    id: injectReloadTimer
+    interval: 400
+    onTriggered: reloadProc.running = true
+  }
+
+  Process {
+    id: reloadProc
+    command: ["hyprctl", "reload"]
+  }
+
+  FileView {
+    id: hyprConfFile
+    path: Quickshell.env("HOME") + "/.config/hypr/hyprland.lua"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.maybeInjectCapture(text())
     onFileChanged: reload()
   }
 
