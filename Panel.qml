@@ -221,16 +221,36 @@ Panel {
       }
 
       // Linger --------------------------------------------------------
-      NumberField {
-        id: lingerField
+      Item {
         width: parent.width
-        label: "Linger"
-        value: root.lingerMs
-        from: 0
-        to: 10000
-        stepSize: 500
-        // 0 = always show (keep the last combo until the next key).
-        onModified: function(v) { root.writeConfig({ lingerMs: v }) }
+        height: Math.max(lingerField.implicitHeight, lingerHint.implicitHeight)
+
+        NumberField {
+          id: lingerField
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          width: parent.width - (root.lingerMs === 0 ? lingerHint.implicitWidth + Style.spacing.md : 0)
+          // With the "never hide" hint out, the field shrinks so both fit.
+          fieldWidth: root.lingerMs === 0 ? Style.space(72) : Style.spacing.numberFieldWidth
+          label: "Linger"
+          value: root.lingerMs
+          from: 0
+          to: 10000
+          stepSize: 500
+          // 0 = always show (keep the last combo until the next key).
+          onModified: function(v) { root.writeConfig({ lingerMs: v }) }
+        }
+
+        Text {
+          id: lingerHint
+          visible: root.lingerMs === 0
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          text: "never hide"
+          color: Qt.darker(Color.popups.text, 1.35)
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+        }
       }
     }
   }
