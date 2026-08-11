@@ -114,7 +114,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "\uF030C" // nf-md-keyboard_outline
+    text: "\uDB80\uDF0C" // md-keyboard (U+F030C, PUA-A: \u takes 4 hex digits, so \uF030C would parse as \uF030 + "C" = camera + C)
     onPressed: function(b) {
       if (b === Qt.RightButton) return
       root.toggle()
