@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Ui
@@ -221,35 +222,50 @@ Panel {
       }
 
       // Linger --------------------------------------------------------
-      Item {
+      // Label above, styled exactly like Dropdown's "Position" label;
+      // the field takes the left half and the never-hide legend the right
+      // half (only while the value is 0). The spacer keeps the field fixed.
+      Column {
         width: parent.width
-        height: Math.max(lingerField.implicitHeight, lingerHint.implicitHeight)
-
-        NumberField {
-          id: lingerField
-          anchors.left: parent.left
-          anchors.verticalCenter: parent.verticalCenter
-          width: parent.width - (root.lingerMs === 0 ? lingerHint.implicitWidth + Style.spacing.md : 0)
-          // With the "never hide" hint out, the field shrinks so both fit.
-          fieldWidth: root.lingerMs === 0 ? Style.space(72) : Style.spacing.numberFieldWidth
-          label: "Linger"
-          value: root.lingerMs
-          from: 0
-          to: 10000
-          stepSize: 500
-          // 0 = always show (keep the last combo until the next key).
-          onModified: function(v) { root.writeConfig({ lingerMs: v }) }
-        }
+        spacing: Style.spacing.labelGap
 
         Text {
-          id: lingerHint
-          visible: root.lingerMs === 0
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          text: "never hide"
-          color: Qt.darker(Color.popups.text, 1.35)
+          text: "Linger"
+          color: Qt.darker(Color.popups.text, 1.4)
           font.family: Style.font.family
           font.pixelSize: Style.font.caption
+          font.bold: true
+        }
+
+        RowLayout {
+          width: parent.width
+          spacing: Style.spacing.md
+
+          NumberField {
+            id: lingerField
+            label: ""
+            fieldWidth: Style.space(110)
+            Layout.preferredWidth: Style.space(110)
+            value: root.lingerMs
+            from: 0
+            to: 10000
+            stepSize: 500
+            // 0 = always show (keep the last combo until the next key).
+            onModified: function(v) { root.writeConfig({ lingerMs: v }) }
+          }
+
+          Item {
+            Layout.fillWidth: true
+          }
+
+          Text {
+            visible: root.lingerMs === 0
+            text: "never hide"
+            color: Qt.darker(Color.popups.text, 1.35)
+            font.family: Style.font.family
+            font.pixelSize: Style.font.body
+            Layout.alignment: Qt.AlignVCenter
+          }
         }
       }
     }
