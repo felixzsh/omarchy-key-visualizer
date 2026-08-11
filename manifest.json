@@ -3,6 +3,7 @@
   "id": "felixzsh.key-visualizer",
   "name": "Key Visualizer",
   "version": "1.5.0",
+  "author": "felixzsh",
   "description": "Shows the keys you press on screen. Great for keybinding tutorials, demos, and screencasts.",
   "kinds": [
     "panel",
