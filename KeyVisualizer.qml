@@ -361,8 +361,16 @@ Item {
       // once here (never on the intermediate growing emits).
       if (es.length > 0 && es[0].releasedAt === 0) {
         var completed = es[0].keys.slice()
-        es[0] = { keys: es[0].keys, releasedAt: Date.now() }
-        root.pressCombo(completed)
+        // A chord made only of modifiers is "mods of nothing": it scores
+        // nothing, so it must not linger or occupy a history row either.
+        // Drop it the moment the keys go up (it still shows live while
+        // held, which is the useful feedback).
+        if (root.modCountOf(completed) >= completed.length) {
+          es.shift()
+        } else {
+          es[0] = { keys: es[0].keys, releasedAt: Date.now() }
+          root.pressCombo(completed)
+        }
       }
     } else if (es.length > 0 && root.sameKeys(es[0].keys, next)) {
       // Same combo re-pressed (or the state file re-fired): refresh it,
