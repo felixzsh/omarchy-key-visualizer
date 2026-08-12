@@ -205,7 +205,6 @@ not expanded.
 ## Roadmap
 
 - Layout-aware keysyms via `xkbcommon` instead of the static US table.
-- Mouse button display.
 - Per-monitor placement.
 
 ## License
