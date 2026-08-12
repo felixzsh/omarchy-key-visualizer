@@ -28,6 +28,7 @@ Panel {
   property string position: "bottom-center"
   property int margin: 67
   property int lingerMs: 1000
+  property int historyCount: 1
 
   // Config lives outside the plugin folder (the shell reloads all plugin
   // code on any file change under ~/.config/omarchy/plugins/), so editing it
@@ -74,6 +75,7 @@ Panel {
     if (typeof cfg.position === "string" && cfg.position.length > 0) root.position = cfg.position
     if (isFinite(cfg.margin) && cfg.margin >= 0) root.margin = Math.round(cfg.margin)
     if (isFinite(cfg.lingerMs) && cfg.lingerMs >= 0) root.lingerMs = Math.round(cfg.lingerMs)
+    if (isFinite(cfg.historyCount)) root.historyCount = Math.max(1, Math.min(5, Math.round(cfg.historyCount)))
   }
 
   // Round-trips every option so a menu edit never drops values the display
@@ -83,11 +85,13 @@ Panel {
       mode: root.mode,
       position: root.position,
       margin: root.margin,
-      lingerMs: root.lingerMs
+      lingerMs: root.lingerMs,
+      historyCount: root.historyCount
     }
     for (var k in update) cfg[k] = update[k]
     if (update.mode !== undefined) root.mode = update.mode
     if (update.position !== undefined) root.position = update.position
+    if (update.historyCount !== undefined) root.historyCount = update.historyCount
     writeProc.command = ["sh", "-c",
       "printf '%s\\n' '" + JSON.stringify(cfg) + "' > " + Util.shellQuote(root.configPath)]
     writeProc.running = true
@@ -211,9 +215,6 @@ Panel {
           { value: "top-left", label: "Top left" },
           { value: "top-center", label: "Top center" },
           { value: "top-right", label: "Top right" },
-          { value: "center-left", label: "Middle left" },
-          { value: "center-center", label: "Middle center" },
-          { value: "center-right", label: "Middle right" },
           { value: "bottom-left", label: "Bottom left" },
           { value: "bottom-center", label: "Bottom center" },
           { value: "bottom-right", label: "Bottom right" }
@@ -266,6 +267,34 @@ Panel {
             font.pixelSize: Style.font.body
             Layout.alignment: Qt.AlignVCenter
           }
+        }
+      }
+
+      // History --------------------------------------------------------
+      // How many combos stack on screen (1..5). Older entries fade out;
+      // the stack direction follows the position (top grows down, bottom
+      // grows up) and is not configurable.
+      Column {
+        width: parent.width
+        spacing: Style.spacing.labelGap
+
+        Text {
+          text: "History (count)"
+          color: Qt.darker(Color.popups.text, 1.4)
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+          font.bold: true
+        }
+
+        NumberField {
+          id: historyField
+          label: ""
+          fieldWidth: Style.space(110)
+          value: root.historyCount
+          from: 1
+          to: 5
+          stepSize: 1
+          onModified: function(v) { root.writeConfig({ historyCount: v }) }
         }
       }
     }

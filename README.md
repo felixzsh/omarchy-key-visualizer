@@ -141,16 +141,18 @@ the plugin on every edit. Editing this file updates the display live:
   "mode": "all",
   "position": "bottom-center",
   "margin": 67,
-  "lingerMs": 1000
+  "lingerMs": 1000,
+  "historyCount": 1
 }
 ```
 
-| Option      | Values                                             | Default         |
-|-------------|----------------------------------------------------|-----------------|
-| `mode`      | `all` or `bindings` (only combos with a modifier)  | `all`           |
-| `position`  | any of the nine: `top-left` … `bottom-right`, plus `center` | `bottom-center` |
-| `margin`    | px from the screen edge                            | `67`            |
-| `lingerMs`  | ms a released combo stays; `0` keeps it until the next key (keyviz defaults to `5000`) | `1000`       |
+| Option         | Values                                             | Default         |
+|----------------|----------------------------------------------------|-----------------|
+| `mode`         | `all` or `bindings` (only combos with a modifier)  | `all`           |
+| `position`     | six placements: `top-left` … `bottom-right` (middle positions were dropped; the stack anchors to the top or bottom edge) | `bottom-center` |
+| `margin`       | px from the screen edge                            | `67`            |
+| `lingerMs`     | ms a released combo stays; `0` keeps it until the next key (keyviz defaults to `5000`) | `1000`       |
+| `historyCount` | how many combos stack on screen (1–5); older entries fade | `1`         |
 
 Deeper tweaks still live in the QML/Lua sources:
 

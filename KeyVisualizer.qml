@@ -11,6 +11,8 @@ import qs.Ui
 // $XDG_RUNTIME_DIR/omarchy-key-visualizer.json. This panel watches that file
 // and renders. No images, no animations: the combo appears while held and
 // lingers briefly after release (like keyviz's Duration), then vanishes.
+// With historyCount > 1 the last few combos stack as a fading history,
+// keyviz-style.
 //
 // On first load the panel also appends a small guarded block to
 // ~/.config/hypr/hyprland.lua that dofiles the capture script, so install
@@ -20,11 +22,21 @@ Item {
   id: root
 
   property bool opened: false
-  property var keys: []
+  // History of recent combinations, newest first. Each entry is
+  // { keys: [...], releasedAt: 0|ms }: 0 while it is the combo currently
+  // being pressed; an epoch ms once a newer combo or a release superseded
+  // it. The history tick prunes entries whose linger window passed. With
+  // historyCount 1 this is exactly "the current combo, lingering".
+  property var entries: []
+  // How many combos stay on screen (1..5, default 1). Older entries fade
+  // out via the entryOpacity() gradient; a count of 1 is the classic
+  // current-combo-only display.
+  property int historyCount: 1
   // How long the last combination stays on screen after the keys are
   // released (keyviz's "Duration"; keyviz defaults to 5000ms). The combo
   // lingers intact, then vanishes in one frame — no fade. 0 means "always
-  // show": the last combo stays until the next key replaces it.
+  // show": entries never expire, so the stack only shrinks when newer
+  // combos push old ones out of the history window.
   property int lingerMs: 1000
   // Drop state written more than this long ago (e.g. from a previous shell
   // session after a restart) so a stale combo never sticks on screen.
@@ -34,10 +46,12 @@ Item {
   // defaults on first run, hot-reloaded on save):
   //   mode     "all" | "bindings" — bindings only shows combos with a
   //            modifier, ignoring plain typing (tutorial mode).
-  //   position bottom-center (default) or any top/bottom + left/center/
-  //            right combination, keyviz-style.
+  //   position one of the six corners/edges: top/bottom + left/center/right.
+  //            Middle positions were dropped — the stack anchors to the top
+  //            (grows down) or the bottom (grows up) edge.
   //   margin   distance from the screen edge in px (default 67).
   //   lingerMs how long a released combo stays (default 1000).
+  //   historyCount how many combos stack on screen (1..5, default 1).
   property string mode: "all"
   property string position: "bottom-center"
   property int margin: Style.space(67)
@@ -71,6 +85,7 @@ Item {
 
   readonly property int cardPad: Style.space(10)
   readonly property int chipGap: Style.space(8)
+  readonly property int entryGap: Style.space(6)
   readonly property int chipPadX: Style.space(9)
   readonly property int chipPadY: Style.space(4)
   readonly property int chipHeight: Math.ceil(chipFontMetrics.height) + 2 * chipPadY
@@ -83,10 +98,58 @@ Item {
     return Math.ceil(chipFontMetrics.advanceWidth(String(label))) + 2 * chipPadX
   }
 
+  function rowWidth(keys) {
+    var w = 0
+    for (var i = 0; i < keys.length; i++) w += chipWidth(keys[i])
+    return w + Math.max(0, keys.length - 1) * chipGap
+  }
+
+  // The card sizes to the widest history row, not the current one, so a
+  // wider older entry never clips.
   function contentWidth() {
     var w = 0
-    for (var i = 0; i < root.keys.length; i++) w += chipWidth(root.keys[i])
-    return w + Math.max(0, root.keys.length - 1) * chipGap
+    for (var i = 0; i < root.entries.length; i++) w = Math.max(w, rowWidth(root.entries[i].keys))
+    return w
+  }
+
+  function contentHeight() {
+    if (root.entries.length === 0) return 0
+    return root.entries.length * root.chipHeight + (root.entries.length - 1) * root.entryGap
+  }
+
+  // Stack fade: the current combo is fully opaque and every older entry
+  // steps down in opacity (tunable here). Clamped so the oldest row of a
+  // 5-deep stack stays readable.
+  function entryOpacity(pos) {
+    return Math.max(0.25, 1 - pos * 0.22)
+  }
+
+  function sameKeys(a, b) {
+    if (a.length !== b.length) return false
+    var sa = a.slice().sort()
+    var sb = b.slice().sort()
+    for (var i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return false
+    return true
+  }
+
+  function trimEntries(list) {
+    while (list.length > root.historyCount) list.pop()
+    return list
+  }
+
+  // Row order for the card. Top positions stack the history downward with
+  // the newest combo on top; bottom positions stack it upward with the
+  // newest on the bottom edge. Each item carries its original index so the
+  // fade always measures distance from the newest combo.
+  function displayModel() {
+    var list = []
+    var n = root.entries.length
+    if (root.position.indexOf("bottom") !== -1) {
+      for (var i = n - 1; i >= 0; i--) list.push({ entry: root.entries[i], pos: i })
+    } else {
+      for (var j = 0; j < n; j++) list.push({ entry: root.entries[j], pos: j })
+    }
+    return list
   }
 
   FontMetrics {
@@ -119,26 +182,46 @@ Item {
       }
       if (!hasMod) next = []
     }
+    var es = root.entries.slice()
     if (next.length === 0) {
-      // Keys were released: keep the last combo on screen for the linger
-      // window, then clear it. lingerMs 0 means "always show": the last
-      // combo stays until the next key replaces it.
-      if (root.lingerMs > 0) hideTimer.restart()
-      else hideTimer.stop()
+      // All keys released: the newest combo enters its linger window; the
+      // history tick prunes it once lingerMs passes.
+      if (es.length > 0 && es[0].releasedAt === 0) {
+        es[0] = { keys: es[0].keys, releasedAt: Date.now() }
+      }
+    } else if (es.length > 0 && root.sameKeys(es[0].keys, next)) {
+      // Same combo re-pressed (or the state file re-fired): refresh it,
+      // no duplicate history entry.
+      es[0] = { keys: es[0].keys, releasedAt: 0 }
     } else {
-      hideTimer.stop()
-      root.keys = next
-      root.opened = true
+      // A new combo arrived: the previous combo becomes a history entry
+      // (it keeps lingering) and the new one takes the top of the stack.
+      if (es.length > 0 && es[0].releasedAt === 0) {
+        es[0] = { keys: es[0].keys, releasedAt: Date.now() }
+      }
+      es.unshift({ keys: next, releasedAt: 0 })
     }
+    root.entries = root.trimEntries(es)
+    root.opened = root.entries.length > 0
   }
 
+  // Prunes entries whose linger window passed and caps the stack at
+  // historyCount, keyviz's tick-style. With lingerMs 0 entries never
+  // expire: the stack only shrinks when newer combos push old ones out.
   Timer {
-    id: hideTimer
-    interval: root.lingerMs
+    id: historyTick
+    interval: 250
+    repeat: true
+    running: root.entries.length > 0
     onTriggered: {
-      if (root.lingerMs <= 0) return // always-show mode never auto-clears
-      root.keys = []
-      root.opened = false
+      var now = Date.now()
+      var kept = []
+      for (var i = 0; i < root.entries.length; i++) {
+        var e = root.entries[i]
+        if (e.releasedAt === 0 || root.lingerMs <= 0 || now - e.releasedAt < root.lingerMs) kept.push(e)
+      }
+      root.entries = root.trimEntries(kept)
+      root.opened = root.entries.length > 0
     }
   }
 
@@ -161,8 +244,7 @@ Item {
   }
 
   onPausedChanged: if (root.paused) {
-    hideTimer.stop()
-    root.keys = []
+    root.entries = []
     root.opened = false
   }
 
@@ -187,15 +269,22 @@ Item {
     var cfg = {}
     try { cfg = JSON.parse(raw || "{}") } catch (e) {}
     root.mode = cfg.mode === "bindings" ? "bindings" : "all"
-    if (typeof cfg.position === "string" && cfg.position.length > 0) root.position = cfg.position
+    if (typeof cfg.position === "string" && cfg.position.length > 0) {
+      // Pre-history versions had middle positions ("center-left" etc.);
+      // they were dropped, so fold any leftover into the bottom row.
+      var pos = cfg.position
+      if (pos.indexOf("center") === 0 || pos.indexOf("middle") === 0) pos = "bottom" + pos.slice(pos.indexOf("-"))
+      root.position = pos
+    }
     if (isFinite(cfg.margin) && cfg.margin >= 0) root.margin = Math.round(cfg.margin)
     if (isFinite(cfg.lingerMs) && cfg.lingerMs >= 0) root.lingerMs = Math.round(cfg.lingerMs)
+    if (isFinite(cfg.historyCount)) root.historyCount = Math.max(1, Math.min(5, Math.round(cfg.historyCount)))
   }
 
   function migrateConfig() {
     // First load with the new location: carry over values from the old
     // plugin-dir config (if any) and remove it, or seed the defaults.
-    var defaults = '{"mode": "all", "position": "bottom-center", "margin": 67, "lingerMs": 1000}'
+    var defaults = '{"mode": "all", "position": "bottom-center", "margin": 67, "lingerMs": 1000, "historyCount": 1}'
     migrateProc.command = ["sh", "-c",
       "if [ -f " + Util.shellQuote(root.legacyConfigPath) + " ]; then "
       + "cp " + Util.shellQuote(root.legacyConfigPath) + " " + Util.shellQuote(root.configPath) + "; "
@@ -318,50 +407,62 @@ Item {
 
     BorderSurface {
       id: card
-      visible: root.keys.length > 0
+      visible: root.entries.length > 0
       width: card.borderLeft + root.cardPad + root.contentWidth() + root.cardPad + card.borderRight
-      height: card.borderTop + root.cardPad + root.chipHeight + root.cardPad + card.borderBottom
+      height: card.borderTop + root.cardPad + root.contentHeight() + root.cardPad + card.borderBottom
       x: {
         var p = root.position
         if (p.indexOf("left") !== -1) return root.margin
         if (p.indexOf("right") !== -1) return parent.width - width - root.margin
         return Math.round((parent.width - width) / 2)
       }
+      // Top positions anchor the stack's first row at the top edge (the
+      // history grows downward); bottom positions anchor the last row at
+      // the bottom edge (the history grows upward).
       y: {
         var p = root.position
         if (p.indexOf("top") !== -1) return root.margin
-        if (p.indexOf("bottom") !== -1) return parent.height - height - root.margin
-        return Math.round((parent.height - height) / 2)
+        return parent.height - height - root.margin
       }
       color: Util.alpha(Color.popups.background, 0.97)
       borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
       radius: Style.cornerRadius
 
-      Row {
+      Column {
         anchors.fill: parent
         anchors.topMargin: card.borderTop + root.cardPad
         anchors.leftMargin: card.borderLeft + root.cardPad
         anchors.bottomMargin: card.borderBottom + root.cardPad
         anchors.rightMargin: card.borderRight + root.cardPad
-        spacing: root.chipGap
+        spacing: root.entryGap
 
         Repeater {
-          model: root.keys
+          model: root.displayModel()
 
-          delegate: Rectangle {
-            required property string modelData
-            width: root.chipWidth(modelData)
-            height: root.chipHeight
-            radius: Math.max(3, Style.cornerRadius - 1)
-            color: Util.alpha(Color.popups.text, 0.10)
-            border.color: Util.alpha(Color.popups.text, 0.35)
-            border.width: 1
+          delegate: Row {
+            required property var modelData
+            spacing: root.chipGap
+            opacity: root.entryOpacity(modelData.pos)
 
-            Text {
-              anchors.centerIn: parent
-              text: parent.modelData
-              font: root.chipFont
-              color: Color.popups.text
+            Repeater {
+              model: modelData.entry.keys
+
+              delegate: Rectangle {
+                required property string modelData
+                width: root.chipWidth(modelData)
+                height: root.chipHeight
+                radius: Math.max(3, Style.cornerRadius - 1)
+                color: Util.alpha(Color.popups.text, 0.10)
+                border.color: Util.alpha(Color.popups.text, 0.35)
+                border.width: 1
+
+                Text {
+                  anchors.centerIn: parent
+                  text: parent.modelData
+                  font: root.chipFont
+                  color: Color.popups.text
+                }
+              }
             }
           }
         }
