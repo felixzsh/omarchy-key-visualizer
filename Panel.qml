@@ -29,6 +29,7 @@ Panel {
   property int margin: 67
   property int lingerMs: 1000
   property int historyCount: 1
+  property bool comboMode: false
 
   // Config lives outside the plugin folder (the shell reloads all plugin
   // code on any file change under ~/.config/omarchy/plugins/), so editing it
@@ -76,6 +77,7 @@ Panel {
     if (isFinite(cfg.margin) && cfg.margin >= 0) root.margin = Math.round(cfg.margin)
     if (isFinite(cfg.lingerMs) && cfg.lingerMs >= 0) root.lingerMs = Math.round(cfg.lingerMs)
     if (isFinite(cfg.historyCount)) root.historyCount = Math.max(1, Math.min(5, Math.round(cfg.historyCount)))
+    root.comboMode = cfg.comboMode === true
   }
 
   // Round-trips every option so a menu edit never drops values the display
@@ -86,12 +88,14 @@ Panel {
       position: root.position,
       margin: root.margin,
       lingerMs: root.lingerMs,
-      historyCount: root.historyCount
+      historyCount: root.historyCount,
+      comboMode: root.comboMode
     }
     for (var k in update) cfg[k] = update[k]
     if (update.mode !== undefined) root.mode = update.mode
     if (update.position !== undefined) root.position = update.position
     if (update.historyCount !== undefined) root.historyCount = update.historyCount
+    if (update.comboMode !== undefined) root.comboMode = update.comboMode
     writeProc.command = ["sh", "-c",
       "printf '%s\\n' '" + JSON.stringify(cfg) + "' > " + Util.shellQuote(root.configPath)]
     writeProc.running = true
@@ -165,6 +169,34 @@ Panel {
           // toggled() and the caller owns the value. Flip the real state;
           // the checked binding follows.
           onToggled: root.setPaused(!root.paused)
+        }
+      }
+
+      // Combo mode -----------------------------------------------------
+      // Game mode: combo counter + score with escalating effects (pulse,
+      // hue, screen shake). Chords with modifiers build the combo; plain
+      // characters are hits that only add score.
+      Item {
+        width: parent.width
+        height: comboSwitch.implicitHeight
+
+        Text {
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          text: "Combo mode"
+          font.family: Style.font.family
+          font.pixelSize: Style.font.body
+          color: Color.popups.text
+        }
+
+        ToggleSwitch {
+          id: comboSwitch
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          checked: root.comboMode
+          foreground: Color.popups.text
+          accent: Color.accent
+          onToggled: root.writeConfig({ comboMode: !root.comboMode })
         }
       }
 

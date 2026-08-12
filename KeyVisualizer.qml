@@ -12,7 +12,8 @@ import qs.Ui
 // and renders. No images, no animations: the combo appears while held and
 // lingers briefly after release (like keyviz's Duration), then vanishes.
 // With historyCount > 1 the last few combos stack as a fading history,
-// keyviz-style.
+// keyviz-style. Combo mode ("game mode") adds a score banner and effects
+// on top of the same display.
 //
 // On first load the panel also appends a small guarded block to
 // ~/.config/hypr/hyprland.lua that dofiles the capture script, so install
@@ -38,6 +39,25 @@ Item {
   // show": entries never expire, so the stack only shrinks when newer
   // combos push old ones out of the history window.
   property int lingerMs: 1000
+
+  // Combo mode — "game mode". Toggle in the panel. Chords that contain a
+  // modifier (Super/Ctrl/Alt/Shift/Menu/AltGr) are COMBOs: they build a
+  // combo counter, apply a multiplier and escalate the effects. Plain
+  // characters (and shifted chars typed alone, which the Lua folds into
+  // the character) are HITs: basic score only, they never touch the combo
+  // counter or its window. Counted when the chord completes (the Lua's
+  // empty payload), so one physical chord is exactly one press even though
+  // the Lua emits intermediate growing states while keys are added.
+  property bool comboMode: false
+  property int comboCount: 0
+  property int comboScore: 0
+  property int multiplier: 1
+  property real comboHue: 0.12
+  property real bannerScale: 1.0
+  property real bannerPulseTo: 1.2
+  property real shakeX: 0.0
+  property real shakeY: 0.0
+  property real popOffsetY: 0.0
   // Drop state written more than this long ago (e.g. from a previous shell
   // session after a restart) so a stale combo never sticks on screen.
   readonly property int maxStateAgeMs: 1500
@@ -152,6 +172,134 @@ Item {
     return list
   }
 
+  // --------------------------------------------------- combo mode
+
+  // Combo mode tuning — all adjustable:
+  readonly property int comboWindowMs: 2000   // max gap between combos before the counter resets
+  readonly property int hitPoints: 10         // score for a plain character (HIT)
+  readonly property int comboBasePoints: 20   // score for a 1-mod COMBO before the multiplier
+  readonly property int comboPerMod: 15       // extra points per additional modifier
+  readonly property int comboPerKey: 5        // extra points per key in the chord
+  readonly property int bannerPadX: Style.space(14)
+  readonly property int bannerPadY: Style.space(6)
+  readonly property int bannerGap: Style.space(8)
+  readonly property int bannerHeight: Math.ceil(bannerFontMetrics.height) + 2 * bannerPadY
+
+  function multiplierFor(count) {
+    if (count >= 50) return 8
+    if (count >= 40) return 7
+    if (count >= 30) return 6
+    if (count >= 20) return 5
+    if (count >= 15) return 4
+    if (count >= 10) return 3
+    if (count >= 5) return 2
+    return 1
+  }
+
+  function modCountOf(keys) {
+    var n = 0
+    for (var i = 0; i < keys.length; i++) if (root.modLabels.indexOf(keys[i]) !== -1) n++
+    return n
+  }
+
+  function tierOf(count) {
+    if (count >= 20) return 3
+    if (count >= 10) return 2
+    if (count >= 5) return 1
+    return 0
+  }
+
+  function formatScore(n) {
+    var s = String(n)
+    var out = ""
+    var c = 0
+    for (var i = s.length - 1; i >= 0; i--) {
+      out = s[i] + out
+      c++
+      if (c % 3 === 0 && i > 0) out = "," + out
+    }
+    return out
+  }
+
+  // Called once per completed physical chord (see apply()). Classifies the
+  // chord as HIT (no modifiers) or COMBO (1+ modifiers) and scores it.
+  function pressCombo(keys) {
+    if (!root.comboMode) return
+    var mods = root.modCountOf(keys)
+    if (mods === 0) {
+      // HIT: plain characters never build the combo, they just score the
+      // basics — the "normal punch" of the game.
+      root.comboScore += root.hitPoints
+      root.bannerPulseTo = 1.08
+      bannerPulseAnim.restart()
+      root.popScore("+" + root.hitPoints, -1)
+      return
+    }
+    // A chord made only of modifiers is not a real combo — modifiers of
+    // nothing. It scores zero and touches neither the counter nor the
+    // window. A valid combo always ends on a non-modifier key.
+    if (mods >= keys.length) return
+    // COMBO: modifiers present plus at least one real key — the real deal.
+    root.comboCount++
+    root.multiplier = root.multiplierFor(root.comboCount)
+    var pts = (root.comboBasePoints + root.comboPerMod * (mods - 1)
+      + root.comboPerKey * (keys.length - 1)) * root.multiplier
+    root.comboScore += pts
+    comboWindowTimer.restart()
+    var tier = root.tierOf(root.comboCount)
+    // Hue shifts with modifiers and chain length; the colorTimer cycles it
+    // continuously once the combo is hot.
+    root.comboHue = (0.12 + mods * 0.06 + root.comboCount * 0.008) % 1
+    root.bannerPulseTo = Math.min(1.6, 1.2 + mods * 0.06 + root.comboCount * 0.004)
+    bannerPulseAnim.restart()
+    root.popScore("+" + pts, root.comboHue)
+    root.triggerShake(mods, tier)
+  }
+
+  // Floating "+N" pop above the banner. hue < 0 renders in the normal text
+  // color (hits); otherwise in the animated combo hue.
+  function popScore(text, hue) {
+    scorePop.text = text
+    scorePop.color = hue < 0 ? Color.popups.text : Qt.hsva(hue, 0.85, 1)
+    scorePop.visible = true
+    popAnim.restart()
+  }
+
+  // Screen shake on combo presses. Amplitude grows with modifiers and the
+  // combo tier; at tier 3 (20+ combos) the continuous jitterTimer takes
+  // over instead so the two never fight.
+  function triggerShake(mods, tier) {
+    if (tier >= 3) return
+    var amp = Math.min(5, 1 + mods * 0.8 + tier * 1.2)
+    shake1.to = amp
+    shake2.to = -amp
+    shake3.to = -amp
+    shake4.to = amp
+    shakeAnim.restart()
+  }
+
+  function comboBannerText() {
+    if (root.comboCount > 0) {
+      var t = "COMBO " + root.comboCount
+      if (root.multiplier > 1) t += " ×" + root.multiplier
+      return t + " · " + root.formatScore(root.comboScore)
+    }
+    return "SCORE " + root.formatScore(root.comboScore)
+  }
+
+  function comboBannerWidth() {
+    return Math.ceil(bannerFontMetrics.advanceWidth(root.comboBannerText())) + 2 * bannerPadX
+  }
+
+  function comboBannerColor() {
+    if (root.comboCount <= 0) return Color.popups.text
+    return Qt.hsva(root.comboHue, 0.85, 1)
+  }
+
+  function bannerVisible() {
+    return root.comboMode && root.comboScore > 0
+  }
+
   FontMetrics {
     id: chipFontMetrics
     font: chipFont
@@ -162,6 +310,17 @@ Item {
     pixelSize: Style.font.title,
     bold: true
   })
+
+  readonly property var bannerFont: Qt.font({
+    family: Style.font.family,
+    pixelSize: Math.round(Style.font.title * 1.35),
+    bold: true
+  })
+
+  FontMetrics {
+    id: bannerFontMetrics
+    font: bannerFont
+  }
 
   // ------------------------------------------------------------- state
 
@@ -185,9 +344,14 @@ Item {
     var es = root.entries.slice()
     if (next.length === 0) {
       // All keys released: the newest combo enters its linger window; the
-      // history tick prunes it once lingerMs passes.
+      // history tick prunes it once lingerMs passes. This empty payload is
+      // also the chord-completion signal: the full combo that just ended is
+      // the one being pushed into its linger window, so count it exactly
+      // once here (never on the intermediate growing emits).
       if (es.length > 0 && es[0].releasedAt === 0) {
+        var completed = es[0].keys.slice()
         es[0] = { keys: es[0].keys, releasedAt: Date.now() }
+        root.pressCombo(completed)
       }
     } else if (es.length > 0 && root.sameKeys(es[0].keys, next)) {
       // Same combo re-pressed (or the state file re-fired): refresh it,
@@ -222,7 +386,52 @@ Item {
       }
       root.entries = root.trimEntries(kept)
       root.opened = root.entries.length > 0
+      // The linger window passed and the display cleared: the run is over,
+      // so the score resets with it (the banner hides again).
+      if (root.entries.length === 0 && root.comboScore !== 0) {
+        root.comboScore = 0
+      }
     }
+  }
+
+  // Combo window: when no new COMBO arrives in time, the counter resets
+  // (the score stays). Hits never touch this timer.
+  Timer {
+    id: comboWindowTimer
+    interval: root.comboWindowMs
+    onTriggered: {
+      root.comboCount = 0
+      root.multiplier = 1
+      root.shakeX = 0
+      root.shakeY = 0
+    }
+  }
+
+  // Tier 4 (20+ combos): continuous subtle vibration while the combo is
+  // hot. Press shakes are skipped at this tier so they never fight.
+  Timer {
+    id: jitterTimer
+    interval: 80
+    running: root.comboMode && root.comboCount >= 20
+    onTriggered: {
+      root.shakeX = (Math.random() - 0.5) * 3
+      root.shakeY = (Math.random() - 0.5) * 3
+    }
+  }
+
+  // Hot combos cycle the hue continuously instead of only on presses.
+  Timer {
+    id: colorTimer
+    interval: 60
+    running: root.comboMode && root.comboCount >= 10
+    onTriggered: root.comboHue = (root.comboHue + 0.012) % 1
+  }
+
+  onComboModeChanged: if (!root.comboMode) {
+    root.comboCount = 0
+    root.multiplier = 1
+    root.shakeX = 0
+    root.shakeY = 0
   }
 
   FileView {
@@ -279,6 +488,7 @@ Item {
     if (isFinite(cfg.margin) && cfg.margin >= 0) root.margin = Math.round(cfg.margin)
     if (isFinite(cfg.lingerMs) && cfg.lingerMs >= 0) root.lingerMs = Math.round(cfg.lingerMs)
     if (isFinite(cfg.historyCount)) root.historyCount = Math.max(1, Math.min(5, Math.round(cfg.historyCount)))
+    root.comboMode = cfg.comboMode === true
   }
 
   function migrateConfig() {
@@ -412,17 +622,29 @@ Item {
       height: card.borderTop + root.cardPad + root.contentHeight() + root.cardPad + card.borderBottom
       x: {
         var p = root.position
-        if (p.indexOf("left") !== -1) return root.margin
-        if (p.indexOf("right") !== -1) return parent.width - width - root.margin
-        return Math.round((parent.width - width) / 2)
+        var bx = 0
+        if (p.indexOf("left") !== -1) bx = root.margin
+        else if (p.indexOf("right") !== -1) bx = panel.width - width - root.margin
+        else bx = Math.round((panel.width - width) / 2)
+        return bx + root.shakeX
       }
       // Top positions anchor the stack's first row at the top edge (the
       // history grows downward); bottom positions anchor the last row at
-      // the bottom edge (the history grows upward).
+      // the bottom edge (the history grows upward). In combo mode the
+      // banner sits below the card for bottom positions and above it for
+      // top positions, and the card makes room for it.
       y: {
         var p = root.position
-        if (p.indexOf("top") !== -1) return root.margin
-        return parent.height - height - root.margin
+        var by = 0
+        if (root.bannerVisible()) {
+          if (p.indexOf("top") !== -1) by = root.margin + root.bannerHeight + root.bannerGap
+          else by = panel.height - root.margin - root.bannerHeight - root.bannerGap - height
+        } else if (p.indexOf("top") !== -1) {
+          by = root.margin
+        } else {
+          by = panel.height - height - root.margin
+        }
+        return by + root.shakeY
       }
       color: Util.alpha(Color.popups.background, 0.97)
       borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
@@ -466,6 +688,88 @@ Item {
             }
           }
         }
+      }
+    }
+
+    // Combo mode banner — a separate visual stacked against the history
+    // card (below it for bottom positions, above it for top positions).
+    // Shows the combo counter, multiplier and running score; hue and
+    // border follow the combo color, and the whole banner pulses on each
+    // press. Shakes with the card via the shared shakeX/shakeY offsets.
+    BorderSurface {
+      id: banner
+      visible: root.bannerVisible()
+      width: root.comboBannerWidth()
+      height: root.bannerHeight
+      x: {
+        var bx = card.x - root.shakeX + (card.width - width) / 2
+        return bx + root.shakeX
+      }
+      // Bottom positions: banner at the bottom edge, card above it.
+      // Top positions: banner at the top edge, card below it.
+      y: {
+        var by = root.position.indexOf("top") !== -1
+          ? root.margin
+          : panel.height - height - root.margin
+        return by + root.shakeY
+      }
+      color: Util.alpha(Color.popups.background, 0.97)
+      borderSpec: Border.surfaceSpec("popups", "border", root.comboBannerColor(), Math.max(1, Style.space(2)))
+      radius: Style.cornerRadius
+      scale: root.bannerScale
+      transformOrigin: Item.Center
+
+      Text {
+        id: bannerText
+        anchors.centerIn: parent
+        text: root.comboBannerText()
+        font: root.bannerFont
+        color: root.comboBannerColor()
+      }
+    }
+
+    // Transient "+N" pop of the points just scored, floating up from the
+    // banner. Reused for every press (hit or combo).
+    Text {
+      id: scorePop
+      visible: false
+      font: root.bannerFont
+      x: banner.x + (banner.width - width) / 2
+      y: banner.y - height - Style.space(8)
+      opacity: 0
+      transform: Translate { id: popTranslate; y: root.popOffsetY }
+    }
+
+    // Banner pulse on each press (hits pulse small, combos grow with mods).
+    SequentialAnimation {
+      id: bannerPulseAnim
+      running: false
+      NumberAnimation { target: root; property: "bannerScale"; from: 1.0; to: root.bannerPulseTo; duration: 70 }
+      NumberAnimation { target: root; property: "bannerScale"; to: 1.0; duration: 220; easing.type: Easing.OutBack }
+    }
+
+    // Press shake: a few quick offset steps around the base position. The
+    // amplitudes are set by triggerShake() before restarting.
+    SequentialAnimation {
+      id: shakeAnim
+      running: false
+      NumberAnimation { id: shake1; target: root; property: "shakeX"; to: 2; duration: 30 }
+      NumberAnimation { id: shake2; target: root; property: "shakeY"; to: -2; duration: 30 }
+      NumberAnimation { id: shake3; target: root; property: "shakeX"; to: -2; duration: 30 }
+      NumberAnimation { id: shake4; target: root; property: "shakeY"; to: 2; duration: 30 }
+      NumberAnimation { target: root; property: "shakeX"; to: 0; duration: 40 }
+      NumberAnimation { target: root; property: "shakeY"; to: 0; duration: 40 }
+    }
+
+    // The +N score pop: snap in, then float up while fading and shrinking.
+    SequentialAnimation {
+      id: popAnim
+      running: false
+      ScriptAction { script: { scorePop.opacity = 1; scorePop.scale = 1.45; root.popOffsetY = 0 } }
+      ParallelAnimation {
+        NumberAnimation { target: scorePop; property: "opacity"; to: 0; duration: 500; easing.type: Easing.OutQuad }
+        NumberAnimation { target: scorePop; property: "scale"; to: 1.0; duration: 500; easing.type: Easing.OutQuad }
+        NumberAnimation { target: root; property: "popOffsetY"; to: -24; duration: 500; easing.type: Easing.OutQuad }
       }
     }
   }

@@ -125,6 +125,35 @@ plugin, not just this one.
   lingering combo is always the last full one, never a partial release state.
   `lingerMs: 0` means "always show": the last combo stays on screen until
   the next key replaces it.
+- **History** (`historyCount`, 1–5, default 1) — the last few combos stack
+  on screen instead of vanishing. Each new combo pushes the previous one
+  down the stack; the current combo is fully opaque and every older entry
+  fades step by step, so a `Super + G` → `Super + Shift + G` sequence shows
+  both, with the older one visibly dimmer. The stack direction follows the
+  position: top positions grow downward (newest on top), bottom positions
+  grow upward (newest at the bottom edge) — not configurable, by design.
+  With `lingerMs: 0` entries never expire, so the stack keeps the last few
+  combos on screen until newer ones push them out.
+- **Combo mode** (toggle in the panel, `comboMode` in config) — turns the
+  display into a game-style counter. Chords that contain a modifier
+  (`Super`, `Ctrl`, `Alt`, `Shift`, `Menu`, `AltGr`) are **combos**: they
+  build a combo counter, apply a multiplier (`×2` at 5, `×3` at 10, … up to
+  `×8` at 50) and escalate the effects. Plain characters (and shifted chars
+  typed alone, which render as the character itself) are **hits**: +10
+  score only, they never touch the combo counter. Scoring:
+  `hit = +10`, `combo = (20 + 15×(mods−1) + 5×(keys−1)) × multiplier`.
+  The banner (`COMBO 12 ×3 · 3,450`) sits below the history for bottom
+  positions and above it for top positions, with a floating `+N` pop per
+  press. Effects scale with modifiers and chain length: banner pulse,
+  hue shift, screen shake (up to 5px) and, at 10+ combos, continuous hue
+  cycling — at 20+, a constant subtle vibration while the combo is hot.
+  The combo counter resets after `comboWindowMs` (2s) without a new combo,
+  and when the linger window then passes (the display clears) the **score
+  resets with it**, so every run starts from zero. A chord made only of
+  modifiers (`Super` alone, `Super+Ctrl+Shift`) is not a valid combo —
+  modifiers of nothing — and scores zero; a valid combo always ends on a
+  non-modifier key. Counted once
+  per physical chord (on release), so growing key presses never double-count.
 - In `mode: "bindings"` only combos with a modifier are shown; plain typing
   stays off screen.
 
@@ -142,7 +171,8 @@ the plugin on every edit. Editing this file updates the display live:
   "position": "bottom-center",
   "margin": 67,
   "lingerMs": 1000,
-  "historyCount": 1
+  "historyCount": 1,
+  "comboMode": false
 }
 ```
 
@@ -153,6 +183,7 @@ the plugin on every edit. Editing this file updates the display live:
 | `margin`       | px from the screen edge                            | `67`            |
 | `lingerMs`     | ms a released combo stays; `0` keeps it until the next key (keyviz defaults to `5000`) | `1000`       |
 | `historyCount` | how many combos stack on screen (1–5); older entries fade | `1`         |
+| `comboMode`    | `true`/`false` — game-style combo counter, score and effects | `false`      |
 
 Deeper tweaks still live in the QML/Lua sources:
 
