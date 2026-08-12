@@ -230,7 +230,7 @@ Panel {
         spacing: Style.spacing.labelGap
 
         Text {
-          text: "Linger"
+          text: "Linger (seconds)"
           color: Qt.darker(Color.popups.text, 1.4)
           font.family: Style.font.family
           font.pixelSize: Style.font.caption
