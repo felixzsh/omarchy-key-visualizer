@@ -13,24 +13,21 @@ and screencasts.
 ## Install
 
 ```bash
-omarchy plugin add /path/to/omarchy-key-visualizer --enable
-# or once published:
-# omarchy plugin add https://github.com/YOU/omarchy-key-visualizer --enable
+omarchy plugin add https://github.com/felixzsh/omarchy-key-visualizer --enable
 ```
 
+You'll be asked where to put the bar widget (or add `--section right`).
 That's it: the panel shows the keys and the keyboard glyph in the bar opens
 the menu. On first load the plugin adds a small hook to your
 `~/.config/hypr/hyprland.lua` (safe to remove) and Hyprland reloads it on
 its own — no manual steps.
 
-> Plugin authors: `omarchy plugin validate ./omarchy-key-visualizer` checks
-> the manifest first.
-
 **Notes**
 - If the glyph doesn't appear right after enabling, run
   `omarchy-shell shell rescanPlugins`.
-- If a deployed change seems stuck, `omarchy restart shell` loads everything
-  fresh.
+- If the display looks stale after an update, `omarchy restart shell`
+  reloads everything fresh.
+- Updates: `omarchy plugin update felixzsh.key-visualizer`.
 
 ## Bar widget
 
