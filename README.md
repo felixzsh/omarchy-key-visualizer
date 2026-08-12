@@ -154,6 +154,8 @@ plugin, not just this one.
   modifiers of nothing — and scores zero; a valid combo always ends on a
   non-modifier key. Counted once
   per physical chord (on release), so growing key presses never double-count.
+
+![Combo mode in action](combo-mode.gif)
 - In `mode: "bindings"` only combos with a modifier are shown; plain typing
   stays off screen.
 
