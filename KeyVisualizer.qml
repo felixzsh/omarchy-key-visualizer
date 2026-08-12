@@ -152,6 +152,17 @@ Item {
     return true
   }
 
+  // Strict superset: every key of `base` is in `next` and `next` has more
+  // keys. The Lua emits on every key-down, so a chord pressed key-by-key
+  // without releasing arrives as growing states (Super, then Super Ctrl,
+  // then Super Ctrl Shift...). Those partials must never become history
+  // rows — only the complete combo at release matters.
+  function isSupersetOf(base, next) {
+    if (next.length <= base.length) return false
+    for (var i = 0; i < base.length; i++) if (next.indexOf(base[i]) === -1) return false
+    return true
+  }
+
   function trimEntries(list) {
     while (list.length > root.historyCount) list.pop()
     return list
@@ -357,6 +368,11 @@ Item {
       // Same combo re-pressed (or the state file re-fired): refresh it,
       // no duplicate history entry.
       es[0] = { keys: es[0].keys, releasedAt: 0 }
+    } else if (es.length > 0 && es[0].releasedAt === 0 && root.isSupersetOf(es[0].keys, next)) {
+      // The chord is still being held and only grew (Super Ctrl Shift 1
+      // pressed key-by-key): partial states are noise, so update the entry
+      // in place instead of pushing a history row for each partial combo.
+      es[0] = { keys: next.slice(), releasedAt: 0 }
     } else {
       // A new combo arrived: the previous combo becomes a history entry
       // (it keeps lingering) and the new one takes the top of the stack.
