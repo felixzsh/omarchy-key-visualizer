@@ -176,7 +176,7 @@ Panel {
         Text {
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
-          text: "Mode"
+          text: "Filter"
           font.family: Style.font.family
           font.pixelSize: Style.font.body
           color: Color.popups.text
