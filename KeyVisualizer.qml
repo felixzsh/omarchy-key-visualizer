@@ -96,10 +96,9 @@ Item {
   // display is frozen (keys are ignored). The bar button writes/removes the
   // file; both sides watch it, so a click on any monitor updates all of them.
   property bool paused: false
-  readonly property string pausePath: {
-    var runtime = Quickshell.env("XDG_RUNTIME_DIR")
-    return (runtime && runtime.length > 0 ? runtime : "/tmp") + "/omarchy-key-visualizer.paused"
-  }
+  // Persisted next to the config so the pause state survives restarts
+  // (the runtime dir is wiped on reboot).
+  readonly property string pausePath: Quickshell.env("HOME") + "/.config/omarchy/key-visualizer.paused"
 
   // ------------------------------------------------------------- layout
 
