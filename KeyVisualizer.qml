@@ -96,6 +96,22 @@ Item {
     return (runtime && runtime.length > 0 ? runtime : "/tmp") + "/omarchy-key-visualizer.json"
   }
 
+  // Super-held flag written by the Lua capture hook. While Super is down the
+  // overlay's input mask covers the card, so a SUPER+drag moves the visualizer
+  // itself (the Lua has unbound the compositor's SUPER+mouse while it is mapped).
+  property bool superHeld: false
+  readonly property string superPath: {
+    var runtime = Quickshell.env("XDG_RUNTIME_DIR")
+    return (runtime && runtime.length > 0 ? runtime : "/tmp") + "/omarchy-key-visualizer-super"
+  }
+  // True while the cursor hovers the card with Super held: the moment when the
+  // compositor's SUPER+mouse move/resize binds are temporarily unbound so the
+  // drag captures the visualizer instead of a window underneath.
+  property bool overCard: false
+  // Whether the SUPER+mouse binds are currently unbound by us (avoids redundant
+  // hyprctl eval calls on every hover transition).
+  property bool dragArmed: false
+
   // Pause flag shared with the bar widget: while the file holds "1" the
   // display is frozen (keys are ignored). The bar button writes/removes the
   // file; both sides watch it, so a click on any monitor updates all of them.
@@ -548,6 +564,15 @@ Item {
     onFileChanged: reload()
   }
 
+  FileView {
+    id: superFile
+    path: root.superPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.superHeld = (text() === "1")
+    onFileChanged: reload()
+  }
+
   onPausedChanged: if (root.paused) {
     root.entries = []
     root.opened = false
@@ -588,6 +613,68 @@ Item {
     if (isFinite(cfg.offsetX)) root.offsetX = Math.round(root.clamp(cfg.offsetX, -2000, 2000))
     if (isFinite(cfg.offsetY)) root.offsetY = Math.round(root.clamp(cfg.offsetY, -2000, 2000))
   }
+
+  // Round-trips the current options to the shared config. Used by the SUPER+drag
+  // to persist the offset on release (it updates offsetX/offsetY live while
+  // dragging, then commits once). Mirrors the panel's writeConfig.
+  function persistConfig() {
+    var cfg = {
+      mode: root.mode,
+      position: root.position,
+      margin: root.margin,
+      lingerMs: root.lingerMs,
+      historyCount: root.historyCount,
+      comboMode: root.comboMode,
+      offsetX: root.offsetX,
+      offsetY: root.offsetY
+    }
+    persistProc.command = ["sh", "-c",
+      "printf '%s\\n' '" + JSON.stringify(cfg) + "' > " + Util.shellQuote(root.configPath)]
+    persistProc.running = true
+  }
+
+  Process {
+    id: persistProc
+  }
+
+  // While the cursor hovers the card with Super held, temporarily unbind the
+  // compositor's SUPER+mouse move/resize so the drag reaches the visualizer
+  // instead of a window underneath. Restored the moment the cursor leaves or
+  // Super is released, so normal window dragging keeps working elsewhere.
+  // Done via `hyprctl eval` so the shell can toggle the Lua-defined binds live.
+  function armSuperDrag() {
+    dragBindProc.command = ["sh", "-c",
+      "hyprctl eval \"hl.unbind('SUPER + mouse:272'); hl.unbind('SUPER + mouse:273')\""]
+    dragBindProc.running = true
+  }
+
+  function disarmSuperDrag() {
+    dragBindProc.command = ["sh", "-c",
+      "hyprctl eval \"hl.unbind('SUPER + mouse:272'); hl.unbind('SUPER + mouse:273'); hl.bind('SUPER + mouse:272', hl.dsp.window.drag(), {mouse=true}); hl.bind('SUPER + mouse:273', hl.dsp.window.resize(), {mouse=true})\""]
+    dragBindProc.running = true
+  }
+
+  Process {
+    id: dragBindProc
+  }
+
+  function updateSuperDrag() {
+    if (dragArea.dragging) return
+    var shouldArm = root.superHeld && root.overCard && root.opened
+    if (shouldArm && !root.dragArmed) {
+      root.dragArmed = true
+      root.armSuperDrag()
+    } else if (!shouldArm && root.dragArmed) {
+      root.dragArmed = false
+      root.disarmSuperDrag()
+    }
+  }
+
+  onSuperHeldChanged: {
+    if (!root.superHeld) root.overCard = false
+    root.updateSuperDrag()
+  }
+  onOverCardChanged: root.updateSuperDrag()
 
   function migrateConfig() {
     // First load with the new location: carry over values from the old
@@ -710,8 +797,28 @@ Item {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
-    // Visual-only surface: never block clicks to the desktop below.
-    mask: Region {}
+    // Click-through normally; while Super is held the card's area captures the
+    // pointer so a SUPER+drag moves the visualizer (see dragArea). While
+    // dragging, capture the whole surface so the drag does not cut off when
+    // there is no window underneath.
+    mask: root.superHeld ? (dragArea.dragging ? fullMask : cardMask) : emptyMask
+
+    // Two pre-declared regions so the mask can switch between "click-through"
+    // (empty) and "capture the card" without rebuilding a region per frame.
+    Region {
+      id: emptyMask
+    }
+    Region {
+      id: cardMask
+      item: card
+    }
+    Region {
+      id: fullMask
+      x: 0
+      y: 0
+      width: panel.width
+      height: panel.height
+    }
 
     BorderSurface {
       id: card
@@ -785,6 +892,49 @@ Item {
           }
         }
       }
+    }
+
+    // SUPER+drag: when Super is held the card's mask captures the pointer, so
+    // pressing and dragging on the card moves the visualizer live. While the
+    // cursor hovers the card with Super held, the compositor's SUPER+mouse
+    // move/resize binds are temporarily unbound so the drag reaches us instead
+    // of a window underneath; they are restored when the cursor leaves (or
+    // Super is released), so normal window dragging keeps working elsewhere.
+    MouseArea {
+      id: dragArea
+      x: card.x
+      y: card.y
+      width: card.width
+      height: card.height
+      enabled: root.superHeld && root.opened
+      acceptedButtons: Qt.LeftButton
+      hoverEnabled: true
+      cursorShape: dragging ? Qt.ClosedHandCursor : Qt.SizeAllCursor
+
+      property bool dragging: false
+      property real grabX: 0
+      property real grabY: 0
+      property int grabOffsetX: 0
+      property int grabOffsetY: 0
+
+      onEntered: root.overCard = true
+      onExited: root.overCard = false
+      onPressed: {
+        var p = dragArea.mapToItem(null, mouse.x, mouse.y)
+        grabX = p.x
+        grabY = p.y
+        grabOffsetX = root.offsetX
+        grabOffsetY = root.offsetY
+        dragging = true
+      }
+      onPositionChanged: {
+        if (!(mouse.buttons & Qt.LeftButton)) return
+        var p = dragArea.mapToItem(null, mouse.x, mouse.y)
+        root.offsetX = Math.round(root.clamp(grabOffsetX + (p.x - grabX), -2000, 2000))
+        root.offsetY = Math.round(root.clamp(grabOffsetY + (p.y - grabY), -2000, 2000))
+      }
+      onReleased: { dragging = false; root.persistConfig(); root.updateSuperDrag() }
+      onCanceled: { dragging = false; root.persistConfig(); root.updateSuperDrag() }
     }
 
     // Combo mode banner — a separate visual stacked against the history

@@ -145,6 +145,25 @@ local function emit()
   end
 end
 
+-- Super-held flag: the panel/display watches this to know when to capture the
+-- SUPER+drag on the overlay (instead of a window underneath). Written only on
+-- transitions so it does not spam the filesystem on every key.
+local SUPER_FLAG = runtime .. "/omarchy-key-visualizer-super"
+local last_super = nil
+local function super_down()
+  return pressed[133] or pressed[134]
+end
+local function emit_super()
+  local down = super_down()
+  if down == last_super then return end
+  last_super = down
+  local f = io.open(SUPER_FLAG, "w")
+  if f then
+    f:write(down and "1" or "0")
+    f:close()
+  end
+end
+
 -- Combos: a combination of keys is treated as a unit. The display only
 -- updates on key-down (the combo grows as you press) and when the last key
 -- is released (the empty payload starts the panel's linger with the last
@@ -165,9 +184,11 @@ hl.on("input.keyboard.key", function(keycode, timeMs, state)
       end
       if not found then combo[#combo + 1] = keycode end
     end
+    emit_super()
     emit()
   else
     pressed[keycode] = false
+    emit_super()
     if not MODS[keycode] then
       for i, kc in ipairs(combo) do
         if kc == keycode then
