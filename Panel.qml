@@ -278,12 +278,14 @@ Panel {
             label: ""
             fieldWidth: Style.space(110)
             Layout.preferredWidth: Style.space(110)
-            value: root.lingerMs
+            // Field works in seconds (matches the label); the config stays in
+            // ms, so we convert at the boundary. Step is 1s, "never hide" at 0.
+            value: Math.round(root.lingerMs / 1000)
             from: 0
-            to: 10000
-            stepSize: 500
+            to: 10
+            stepSize: 1
             // 0 = always show (keep the last combo until the next key).
-            onModified: function(v) { root.writeConfig({ lingerMs: v }) }
+            onModified: function(v) { root.writeConfig({ lingerMs: v * 1000 }) }
           }
 
           Item {
