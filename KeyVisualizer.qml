@@ -39,6 +39,10 @@ Item {
   // show": entries never expire, so the stack only shrinks when newer
   // combos push old ones out of the history window.
   property int lingerMs: 1000
+  // Manual fine-tune offsets (px) applied on top of the preset position.
+  // Written by the panel D-pad buttons; reset when a dropdown preset is chosen.
+  property int offsetX: 0
+  property int offsetY: 0
 
   // Combo mode — "game mode". Toggle in the panel. Chords that contain a
   // modifier (Super/Ctrl/Alt/Shift/Menu/AltGr) are COMBOs: they build a
@@ -136,6 +140,73 @@ Item {
     return root.entries.length * root.chipHeight + (root.entries.length - 1) * root.entryGap
   }
 
+  // ---- geometry helpers for card/banner group clamp ----
+
+  function clamp(v, lo, hi) {
+    return Math.max(lo, Math.min(hi, v))
+  }
+
+  function groupWidth() {
+    return card.width
+  }
+
+  function groupHeight() {
+    if (root.bannerVisible()) return card.height + root.bannerHeight + root.bannerGap
+    return card.height
+  }
+
+  function groupLeftOffset() {
+    if (!root.bannerVisible()) return 0
+    var mode = root.sideMode()
+    if (mode === "left") return 0
+    if (mode === "right") return Math.min(0, card.width - banner.width)
+    return Math.min(0, (card.width - banner.width) / 2)
+  }
+
+  function groupRightOffset() {
+    if (!root.bannerVisible()) return card.width
+    var mode = root.sideMode()
+    if (mode === "left") return Math.max(card.width, banner.width)
+    if (mode === "right") return card.width
+    return Math.max(card.width, (card.width + banner.width) / 2)
+  }
+
+  // Returns the y of the topmost element of the visual group (banner for
+  // top positions, card for bottom), clamped so the whole group stays on screen.
+  function groupY0() {
+    var gH = root.groupHeight()
+    var top = root.position.indexOf("top") !== -1
+    var raw = top ? root.margin + root.offsetY : panel.height - gH - root.margin + root.offsetY
+    return root.clamp(raw, 0, panel.height - gH)
+  }
+
+  // Combo-banner horizontal anchor, computed from the card's *target* position
+  // (preset + offset, pre-clamp) so it never feeds back into the clamp. The
+  // banner anchors to the card's outward edge and grows toward the screen
+  // center: "left" grows right, "right" grows left, "center" stays centered
+  // (the look for centered presets, e.g. bottom-center by default).
+  function sideMode() {
+    if (!root.bannerVisible()) return "center"
+    var base = 0
+    var p = root.position
+    if (p.indexOf("left") !== -1) base = root.margin
+    else if (p.indexOf("right") !== -1) base = panel.width - root.groupWidth() - root.margin
+    else base = Math.round((panel.width - root.groupWidth()) / 2)
+    var target = base + root.offsetX
+    var distLeft = target
+    var distRight = panel.width - (target + root.groupWidth())
+    if (distLeft < distRight) return "left"
+    if (distRight < distLeft) return "right"
+    return "center"
+  }
+
+  // History stacks downward (newest at the top) when the card sits in the top
+  // half of the screen, upward when it sits in the bottom half. Recomputed from
+  // the live card position so it follows D-pad nudges.
+  function stackDown() {
+    return card.y + card.height / 2 < panel.height / 2
+  }
+
   // Stack fade: the current combo is fully opaque and every older entry
   // steps down in opacity (tunable here). Clamped so the oldest row of a
   // 5-deep stack stays readable.
@@ -167,14 +238,14 @@ Item {
     return list
   }
 
-  // Row order for the card. Top positions stack the history downward with
-  // the newest combo on top; bottom positions stack it upward with the
-  // newest on the bottom edge. Each item carries its original index so the
-  // fade always measures distance from the newest combo.
+  // Row order for the card. When the card sits in the bottom half the history
+  // stacks upward with the newest on the bottom edge; in the top half it
+  // stacks downward with the newest on top. Each item carries its original
+  // index so the fade always measures distance from the newest combo.
   function displayModel() {
     var list = []
     var n = root.entries.length
-    if (root.position.indexOf("bottom") !== -1) {
+    if (!root.stackDown()) {
       for (var i = n - 1; i >= 0; i--) list.push({ entry: root.entries[i], pos: i })
     } else {
       for (var j = 0; j < n; j++) list.push({ entry: root.entries[j], pos: j })
@@ -274,6 +345,8 @@ Item {
     scorePop.visible = true
     popAnim.restart()
   }
+
+
 
   // Screen shake on combo presses. Amplitude grows with modifiers and the
   // combo tier; at tier 3 (20+ combos) the continuous jitterTimer takes
@@ -512,12 +585,14 @@ Item {
     if (isFinite(cfg.lingerMs) && cfg.lingerMs >= 0) root.lingerMs = Math.round(cfg.lingerMs)
     if (isFinite(cfg.historyCount)) root.historyCount = Math.max(1, Math.min(5, Math.round(cfg.historyCount)))
     root.comboMode = cfg.comboMode === true
+    if (isFinite(cfg.offsetX)) root.offsetX = Math.round(root.clamp(cfg.offsetX, -2000, 2000))
+    if (isFinite(cfg.offsetY)) root.offsetY = Math.round(root.clamp(cfg.offsetY, -2000, 2000))
   }
 
   function migrateConfig() {
     // First load with the new location: carry over values from the old
     // plugin-dir config (if any) and remove it, or seed the defaults.
-    var defaults = '{"mode": "all", "position": "bottom-center", "margin": 67, "lingerMs": 1000, "historyCount": 1}'
+    var defaults = '{"mode": "all", "position": "bottom-center", "margin": 67, "lingerMs": 1000, "historyCount": 1, "comboMode": false, "offsetX": 0, "offsetY": 0}'
     migrateProc.command = ["sh", "-c",
       "if [ -f " + Util.shellQuote(root.legacyConfigPath) + " ]; then "
       + "cp " + Util.shellQuote(root.legacyConfigPath) + " " + Util.shellQuote(root.configPath) + "; "
@@ -643,31 +718,29 @@ Item {
       visible: root.entries.length > 0
       width: card.borderLeft + root.cardPad + root.contentWidth() + root.cardPad + card.borderRight
       height: card.borderTop + root.cardPad + root.contentHeight() + root.cardPad + card.borderBottom
+      // Preset base position + manual offset, clamped so the whole visual
+      // group (card and the combo banner) stays on screen. A nudge that
+      // would cross a screen edge is silently ignored.
       x: {
         var p = root.position
-        var bx = 0
-        if (p.indexOf("left") !== -1) bx = root.margin
-        else if (p.indexOf("right") !== -1) bx = panel.width - width - root.margin
-        else bx = Math.round((panel.width - width) / 2)
-        return bx + root.shakeX
+        var gW = root.groupWidth()
+        var lo = -root.groupLeftOffset()
+        var hi = panel.width - root.groupRightOffset()
+        var base = 0
+        if (p.indexOf("left") !== -1) base = root.margin
+        else if (p.indexOf("right") !== -1) base = panel.width - gW - root.margin
+        else base = Math.round((panel.width - gW) / 2)
+        return root.clamp(base + root.offsetX, lo, hi) + root.shakeX
       }
-      // Top positions anchor the stack's first row at the top edge (the
-      // history grows downward); bottom positions anchor the last row at
-      // the bottom edge (the history grows upward). In combo mode the
-      // banner sits below the card for bottom positions and above it for
-      // top positions, and the card makes room for it.
+      // The group's top Y (banner for top positions, card for bottom)
+      // follows the preset + offset and is clamped on screen; the card
+      // sits below the banner on top positions, at the group top on bottom.
       y: {
         var p = root.position
-        var by = 0
-        if (root.bannerVisible()) {
-          if (p.indexOf("top") !== -1) by = root.margin + root.bannerHeight + root.bannerGap
-          else by = panel.height - root.margin - root.bannerHeight - root.bannerGap - height
-        } else if (p.indexOf("top") !== -1) {
-          by = root.margin
-        } else {
-          by = panel.height - height - root.margin
-        }
-        return by + root.shakeY
+        var y0 = root.groupY0()
+        var y = y0
+        if (root.bannerVisible() && p.indexOf("top") !== -1) y = y0 + root.bannerHeight + root.bannerGap
+        return y + root.shakeY
       }
       color: Util.alpha(Color.popups.background, 0.97)
       borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
@@ -724,16 +797,20 @@ Item {
       visible: root.bannerVisible()
       width: root.comboBannerWidth()
       height: root.bannerHeight
+      // The banner anchors to the card's outward edge so it grows toward the
+      // screen center (left-anchored when the card is on the left, right-
+      // anchored when on the right, centered otherwise); the group clamp on
+      // the card keeps it on screen. Vertically it tracks the group Y0 so it
+      // stays stacked with the card as the offset moves.
       x: {
-        var bx = card.x - root.shakeX + (card.width - width) / 2
-        return bx + root.shakeX
+        var mode = root.sideMode()
+        if (mode === "left") return card.x
+        if (mode === "right") return card.x + card.width - width
+        return card.x + (card.width - width) / 2
       }
-      // Bottom positions: banner at the bottom edge, card above it.
-      // Top positions: banner at the top edge, card below it.
       y: {
-        var by = root.position.indexOf("top") !== -1
-          ? root.margin
-          : panel.height - height - root.margin
+        var y0 = root.groupY0()
+        var by = root.position.indexOf("top") !== -1 ? y0 : y0 + card.height + root.bannerGap
         return by + root.shakeY
       }
       color: Util.alpha(Color.popups.background, 0.97)

@@ -30,6 +30,18 @@ Panel {
   property int lingerMs: 1000
   property int historyCount: 1
   property bool comboMode: false
+  // Manual fine-tune offsets (px) written by the D-pad; reset when a preset
+  // position is chosen from the dropdown.
+  property int offsetX: 0
+  property int offsetY: 0
+  // How many pixels a D-pad click moves the card.
+  readonly property int nudgeStep: 4
+  // The display's state file: the D-pad injects a virtual arrow key here so
+  // the visualizer renders the move like a real keypress.
+  readonly property string statePath: {
+    var runtime = Quickshell.env("XDG_RUNTIME_DIR")
+    return (runtime && runtime.length > 0 ? runtime : "/tmp") + "/omarchy-key-visualizer.json"
+  }
 
   // Config lives outside the plugin folder (the shell reloads all plugin
   // code on any file change under ~/.config/omarchy/plugins/), so editing it
@@ -77,6 +89,8 @@ Panel {
     if (isFinite(cfg.lingerMs) && cfg.lingerMs >= 0) root.lingerMs = Math.round(cfg.lingerMs)
     if (isFinite(cfg.historyCount)) root.historyCount = Math.max(1, Math.min(5, Math.round(cfg.historyCount)))
     root.comboMode = cfg.comboMode === true
+    if (isFinite(cfg.offsetX)) root.offsetX = Math.round(cfg.offsetX)
+    if (isFinite(cfg.offsetY)) root.offsetY = Math.round(cfg.offsetY)
   }
 
   // Round-trips every option so a menu edit never drops values the display
@@ -88,16 +102,86 @@ Panel {
       margin: root.margin,
       lingerMs: root.lingerMs,
       historyCount: root.historyCount,
-      comboMode: root.comboMode
+      comboMode: root.comboMode,
+      offsetX: root.offsetX,
+      offsetY: root.offsetY
     }
     for (var k in update) cfg[k] = update[k]
     if (update.mode !== undefined) root.mode = update.mode
     if (update.position !== undefined) root.position = update.position
     if (update.historyCount !== undefined) root.historyCount = update.historyCount
     if (update.comboMode !== undefined) root.comboMode = update.comboMode
+    if (update.offsetX !== undefined) root.offsetX = update.offsetX
+    if (update.offsetY !== undefined) root.offsetY = update.offsetY
     writeProc.command = ["sh", "-c",
       "printf '%s\\n' '" + JSON.stringify(cfg) + "' > " + Util.shellQuote(root.configPath)]
     writeProc.running = true
+  }
+
+  // Nudge the card by one step and feed a virtual arrow key to the visualizer
+  // through its state file, so the move shows up in the history like a real
+  // keypress: we write the arrow down, then release it a moment later.
+  function nudge(dx, dy) {
+    var nx = Math.max(-2000, Math.min(2000, root.offsetX + dx * root.nudgeStep))
+    var ny = Math.max(-2000, Math.min(2000, root.offsetY + dy * root.nudgeStep))
+    root.writeConfig({ offsetX: nx, offsetY: ny })
+    var arrow = dx < 0 ? "←" : dx > 0 ? "→" : dy < 0 ? "↑" : "↓"
+    var now = Math.floor(Date.now() / 1000)
+    nudgeKeyProc.command = ["sh", "-c",
+      "printf '%s' '" + JSON.stringify({ keys: [arrow], t: now }) + "' > " + Util.shellQuote(root.statePath)]
+    nudgeKeyProc.running = true
+    nudgeReleaseTimer.interval = 120
+    nudgeReleaseTimer.restart()
+  }
+
+  // Press-and-hold helpers for the D-pad: a tap moves once; holding starts the
+  // repeat timer so the card keeps moving (and the arrow keeps feeding the
+  // visualizer) until the button is released.
+  function startNudge(dx, dy) {
+    root.nudge(dx, dy)
+    nudgeHoldTimer.dx = dx
+    nudgeHoldTimer.dy = dy
+    nudgeHoldTimer.interval = 280
+    nudgeHoldTimer.repeat = false
+    nudgeHoldTimer.restart()
+  }
+
+  function stopNudge() {
+    nudgeHoldTimer.interval = 280
+    nudgeHoldTimer.repeat = false
+    nudgeHoldTimer.stop()
+  }
+
+  Process {
+    id: nudgeKeyProc
+  }
+
+  Timer {
+    id: nudgeReleaseTimer
+    interval: 120
+    repeat: false
+    onTriggered: {
+      var now = Math.floor(Date.now() / 1000)
+      nudgeKeyProc.command = ["sh", "-c",
+        "printf '%s' '" + JSON.stringify({ keys: [], t: now }) + "' > " + Util.shellQuote(root.statePath)]
+      nudgeKeyProc.running = true
+    }
+  }
+
+  // While a D-pad button is held: the first move happens on press (in
+  // startNudge), then after a short delay this timer repeats every 60ms.
+  Timer {
+    id: nudgeHoldTimer
+    interval: 280
+    repeat: false
+    property int dx: 0
+    property int dy: 0
+    onTriggered: {
+      root.nudge(dx, dy)
+      interval = 60
+      repeat = true
+      restart()
+    }
   }
 
   Process {
@@ -250,7 +334,75 @@ Panel {
           { value: "bottom-center", label: "Bottom center" },
           { value: "bottom-right", label: "Bottom right" }
         ]
-        onChanged: function(v) { root.writeConfig({ position: v }) }
+        onChanged: function(v) { root.writeConfig({ position: v, offsetX: 0, offsetY: 0 }) }
+      }
+
+      // Fine-tune D-pad: 4px per click; holding a button keeps moving (the
+      // move repeats after a short delay). Each nudge also feeds a virtual
+      // arrow key to the visualizer, so the move shows up in its history.
+      // The Button draws the look; a transparent MouseArea on top captures
+      // press/release so a held button can repeat.
+      RowLayout {
+        width: parent.width
+        spacing: Style.spacing.xs
+
+        Item {
+          Layout.fillWidth: true
+          Layout.preferredHeight: Style.spacing.controlHeight
+          Button {
+            anchors.fill: parent
+            text: "←"
+            tooltipText: "Move left"
+          }
+          MouseArea {
+            anchors.fill: parent
+            hoverEnabled: false
+            onPressed: root.startNudge(-1, 0)
+            onReleased: root.stopNudge()
+          }
+        }
+
+        ColumnLayout {
+          spacing: Style.spacing.xxs
+          Layout.fillWidth: true
+          Repeater {
+            model: [
+              { dx: 0, dy: -1, label: "↑", tip: "Move up" },
+              { dx: 0, dy: 1, label: "↓", tip: "Move down" }
+            ]
+            delegate: Item {
+              Layout.fillWidth: true
+              Layout.preferredHeight: Math.round(Style.spacing.controlHeight / 2)
+              Button {
+                anchors.fill: parent
+                text: modelData.label
+                tooltipText: modelData.tip
+              }
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: false
+                onPressed: root.startNudge(modelData.dx, modelData.dy)
+                onReleased: root.stopNudge()
+              }
+            }
+          }
+        }
+
+        Item {
+          Layout.fillWidth: true
+          Layout.preferredHeight: Style.spacing.controlHeight
+          Button {
+            anchors.fill: parent
+            text: "→"
+            tooltipText: "Move right"
+          }
+          MouseArea {
+            anchors.fill: parent
+            hoverEnabled: false
+            onPressed: root.startNudge(1, 0)
+            onReleased: root.stopNudge()
+          }
+        }
       }
 
       // Linger --------------------------------------------------------
