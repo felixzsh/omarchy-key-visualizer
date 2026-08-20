@@ -43,6 +43,18 @@ Item {
   // Written by the panel D-pad buttons; reset when a dropdown preset is chosen.
   property int offsetX: 0
   property int offsetY: 0
+  // Adaptive vertical anchor: when the newest row's Y is in the upper half the
+  // group is top-anchored (history grows down, newest at top) so the newest
+  // chip stays at a stable Y; in the lower half it is bottom-anchored (grows
+  // up). offsetY is ALWAYS the absolute Y of the newest row's top edge, so the
+  // D-pad and the drag both mean the same thing and never diverge. The card's
+  // Y is derived from offsetY below, so crossing the half never jumps.
+  property bool isTopHalf: false
+  function updateIsTopHalf() {
+    if (!panel) return
+    var n = root.offsetY < panel.height / 2
+    if (n !== isTopHalf) isTopHalf = n
+  }
 
   // Combo mode — "game mode". Toggle in the panel. Chords that contain a
   // modifier (Super/Ctrl/Alt/Shift/Menu/AltGr) are COMBOs: they build a
@@ -111,6 +123,16 @@ Item {
   // Whether the SUPER+mouse binds are currently unbound by us (avoids redundant
   // hyprctl eval calls on every hover transition).
   property bool dragArmed: false
+  // Debug overlay: shows the live position/dimensions/quadrant of the card
+  // next to it, while dragging and after release. Toggled via the plugin CLI.
+  property bool debugOverlay: false
+
+  Component.onCompleted: updateIsTopHalf()
+
+  // Latch the vertical anchor (top/bottom half) whenever the offset changes
+  // (drag or D-pad). Typing only changes card height/entries, not offsetY, so
+  // this does not fire while a combo is being held.
+  onOffsetYChanged: updateIsTopHalf()
 
   // Pause flag shared with the bar widget: while the file holds "1" the
   // display is frozen (keys are ignored). The bar button writes/removes the
@@ -187,13 +209,27 @@ Item {
     return Math.max(card.width, (card.width + banner.width) / 2)
   }
 
-  // Returns the y of the topmost element of the visual group (banner for
-  // top positions, card for bottom), clamped so the whole group stays on screen.
-  function groupY0() {
-    var gH = root.groupHeight()
-    var top = root.position.indexOf("top") !== -1
-    var raw = top ? root.margin + root.offsetY : panel.height - gH - root.margin + root.offsetY
-    return root.clamp(raw, 0, panel.height - gH)
+  // Y of the card's top edge derived from offsetY (the newest row's top Y).
+  // In the top half the newest is the first row (card top); in the bottom half
+  // it is the last row (card bottom). This keeps the newest at offsetY in both
+  // halves regardless of how many entries are stacked.
+  function cardTopY() {
+    var borderTop = card ? card.borderTop : 0
+    var pad = root.cardPad
+    if (root.isTopHalf) return root.offsetY - borderTop - pad
+    return root.offsetY - borderTop - pad - (root.contentHeight() - root.chipHeight)
+  }
+
+  // Default newest-row Y for the current preset. offsetY==0 means "preset
+  // default" (the dropdown resets it), so we map it to where the preset anchors
+  // the group: top presets put the newest near the top edge, bottom presets
+  // near the bottom edge.
+  function defaultOffsetY() {
+    if (!panel) return 0
+    var borderTop = card ? card.borderTop : 0
+    var borderBottom = card ? card.borderBottom : 0
+    if (root.position.indexOf("top") !== -1) return root.margin + borderTop + root.cardPad
+    return panel.height - root.margin - borderBottom - root.cardPad - root.chipHeight
   }
 
   // Combo-banner horizontal anchor, computed from the card's *target* position
@@ -216,11 +252,10 @@ Item {
     return "center"
   }
 
-  // History stacks downward (newest at the top) when the card sits in the top
-  // half of the screen, upward when it sits in the bottom half. Recomputed from
-  // the live card position so it follows D-pad nudges.
+  // History stacking direction derived from the adaptive anchor. Recomputed
+  // after drag release / offset changes so it follows the card.
   function stackDown() {
-    return card.y + card.height / 2 < panel.height / 2
+    return root.isTopHalf
   }
 
   // Stack fade: the current combo is fully opaque and every older entry
@@ -611,7 +646,20 @@ Item {
     if (isFinite(cfg.historyCount)) root.historyCount = Math.max(1, Math.min(5, Math.round(cfg.historyCount)))
     root.comboMode = cfg.comboMode === true
     if (isFinite(cfg.offsetX)) root.offsetX = Math.round(root.clamp(cfg.offsetX, -2000, 2000))
-    if (isFinite(cfg.offsetY)) root.offsetY = Math.round(root.clamp(cfg.offsetY, -2000, 2000))
+    if (isFinite(cfg.offsetY)) {
+      var oy = Math.round(root.clamp(cfg.offsetY, -2000, 2000))
+      // offsetY==0 means "preset default" (the dropdown resets it), so map it
+      // to the preset's anchor and write the real value back so the bar panel
+      // and the config stay in sync.
+      if (oy === 0) {
+        var def = root.defaultOffsetY()
+        root.offsetY = def
+        root.persistConfig()
+      } else {
+        root.offsetY = oy
+      }
+    }
+    root.updateIsTopHalf()
   }
 
   // Round-trips the current options to the shared config. Used by the SUPER+drag
@@ -784,6 +832,8 @@ Item {
     function pause(): string { root.setPaused(true); return "ok" }
     function resume(): string { root.setPaused(false); return "ok" }
     function toggle(): string { root.setPaused(!root.paused); return "ok" }
+    function debug(): string { root.debugOverlay = !root.debugOverlay; return root.debugOverlay ? "on" : "off" }
+    function debugState(): string { return root.debugOverlay ? "on" : "off" }
   }
 
   // ------------------------------------------------------------- display
@@ -839,15 +889,16 @@ Item {
         else base = Math.round((panel.width - gW) / 2)
         return root.clamp(base + root.offsetX, lo, hi) + root.shakeX
       }
-      // The group's top Y (banner for top positions, card for bottom)
-      // follows the preset + offset and is clamped on screen; the card
-      // sits below the banner on top positions, at the group top on bottom.
+      // The card's Y is derived so the newest row sits at offsetY (stable in
+      // both halves); the group (card + combo banner) is then clamped on screen.
       y: {
-        var p = root.position
-        var y0 = root.groupY0()
-        var y = y0
-        if (root.bannerVisible() && p.indexOf("top") !== -1) y = y0 + root.bannerHeight + root.bannerGap
-        return y + root.shakeY
+        var cy = root.cardTopY()
+        var bannerH = root.bannerVisible() ? root.bannerHeight + root.bannerGap : 0
+        var groupTop = root.isTopHalf ? cy - bannerH : cy
+        var groupBottom = root.isTopHalf ? cy + card.height : cy + card.height + bannerH
+        if (groupTop < 0) cy += -groupTop
+        else if (groupBottom > panel.height) cy -= (groupBottom - panel.height)
+        return cy + root.shakeY
       }
       color: Util.alpha(Color.popups.background, 0.97)
       borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
@@ -933,9 +984,53 @@ Item {
         root.offsetX = Math.round(root.clamp(grabOffsetX + (p.x - grabX), -2000, 2000))
         root.offsetY = Math.round(root.clamp(grabOffsetY + (p.y - grabY), -2000, 2000))
       }
-      onReleased: { dragging = false; root.persistConfig(); root.updateSuperDrag() }
-      onCanceled: { dragging = false; root.persistConfig(); root.updateSuperDrag() }
+      onReleased: { dragging = false; root.persistConfig(); root.updateIsTopHalf(); root.updateSuperDrag() }
+      onCanceled: { dragging = false; root.persistConfig(); root.updateIsTopHalf(); root.updateSuperDrag() }
     }
+
+    // Debug overlay: live readout of the card's position/dimensions and the
+    // movement state, shown next to the card while moving and after release.
+    // Toggle with: omarchy-shell key-visualizer debug
+    BorderSurface {
+      id: debugOverlay
+      visible: root.debugOverlay
+      width: debugFontMetrics.advanceWidth(debugText.text) + root.cardPad * 2
+      height: debugFontMetrics.height + root.cardPad * 2
+      x: card.x + card.width + Style.space(12)
+      y: card.y
+      z: 10
+      color: Util.alpha(Color.popups.background, 0.95)
+      borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(1)))
+      radius: Style.cornerRadius
+
+      Text {
+        id: debugText
+        anchors.fill: parent
+        anchors.margins: root.cardPad
+        verticalAlignment: Text.AlignVCenter
+        font: debugFont
+        color: Color.popups.text
+        text: {
+          var lb = "\n"
+          return "x=" + Math.round(card.x) + " y=" + Math.round(card.y)
+            + lb + "w=" + Math.round(card.width) + " h=" + Math.round(card.height)
+            + lb + "offX=" + root.offsetX + " offY=" + root.offsetY
+            + lb + "half=" + (root.isTopHalf ? "top" : "bottom")
+            + (root.debugDragging ? " DRAG" : "")
+        }
+      }
+    }
+    readonly property bool debugDragging: dragArea.dragging
+
+    FontMetrics {
+      id: debugFontMetrics
+      font: debugFont
+    }
+    readonly property var debugFont: Qt.font({
+      family: Style.font.family,
+      pixelSize: Style.font.bodySmall,
+      bold: false
+    })
 
     // Combo mode banner — a separate visual stacked against the history
     // card (below it for bottom positions, above it for top positions).
@@ -959,9 +1054,8 @@ Item {
         return card.x + (card.width - width) / 2
       }
       y: {
-        var y0 = root.groupY0()
-        var by = root.position.indexOf("top") !== -1 ? y0 : y0 + card.height + root.bannerGap
-        return by + root.shakeY
+        if (root.isTopHalf) return card.y - height - root.bannerGap + root.shakeY
+        return card.y + card.height + root.bannerGap + root.shakeY
       }
       color: Util.alpha(Color.popups.background, 0.97)
       borderSpec: Border.surfaceSpec("popups", "border", root.comboBannerColor(), Math.max(1, Style.space(2)))
