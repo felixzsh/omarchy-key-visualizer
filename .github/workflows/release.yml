@@ -44,11 +44,11 @@ jobs:
             [ -z "$line" ] && continue
             sha="${line%% *}"
             subject="${line#* }"
-            # match conventional commits: feat, fix (with optional scope)
-            if echo "$subject" | grep -qE '^(feat|fix)(\(.+\))?: '; then
-              type="$(echo "$subject" | sed -E 's/^([a-z]+)(\(.+\))?:.*/\1/')"
+            # match conventional commits: feat, fix (with optional scope and breaking !)
+            if echo "$subject" | grep -qE '^(feat|fix)(\([^)]+\))?!?: '; then
+              type="$(echo "$subject" | sed -E 's/^([a-z]+)(\([^)]+\))?!?:.*/\1/')"
               # strip type prefix for display, keep rest as title
-              title="$(echo "$subject" | sed -E 's/^[a-z]+(\(.+\))?: //')"
+              title="$(echo "$subject" | sed -E 's/^[a-z]+(\([^)]+\))?!?: //')"
               short="$(echo "$sha" | cut -c1-7)"
               url="https://github.com/${REPO}/commit/${sha}"
               entry="- ${title} ([\`${short}\`](${url}))"
@@ -58,7 +58,7 @@ jobs:
                 FIXES="${FIXES}${entry}"$'\n'
               fi
             fi
-          done < <(git log "$RANGE" --pretty=format:"%H %s" --no-merges)
+          done < <(git log "$RANGE" --format="%H %s" --no-merges)
 
           {
             echo "# ${TAG}"
