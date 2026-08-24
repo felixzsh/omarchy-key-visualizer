@@ -105,7 +105,9 @@ Item {
 
   readonly property string statePath: {
     var runtime = Quickshell.env("XDG_RUNTIME_DIR")
-    return (runtime && runtime.length > 0 ? runtime : "/tmp") + "/omarchy-key-visualizer.json"
+    if (!runtime || runtime.length === 0) return ""
+    if (runtime === "/tmp") return ""
+    return runtime + "/omarchy-key-visualizer.json"
   }
 
   // Super-held flag written by the Lua capture hook. While Super is down the
@@ -114,7 +116,9 @@ Item {
   property bool superHeld: false
   readonly property string superPath: {
     var runtime = Quickshell.env("XDG_RUNTIME_DIR")
-    return (runtime && runtime.length > 0 ? runtime : "/tmp") + "/omarchy-key-visualizer-super"
+    if (!runtime || runtime.length === 0) return ""
+    if (runtime === "/tmp") return ""
+    return runtime + "/omarchy-key-visualizer-super"
   }
   // True while the cursor hovers the card with Super held: the moment when the
   // compositor's SUPER+mouse move/resize binds are temporarily unbound so the

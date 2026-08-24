@@ -12,9 +12,64 @@
 -- then reload Hyprland (`hyprctl reload`). Requires Hyprland with Lua
 -- config support (0.56+).
 
-local runtime = os.getenv("XDG_RUNTIME_DIR") or ""
-if runtime == "" then runtime = "/tmp" end
-local STATE_FILE = runtime .. "/omarchy-key-visualizer.json"
+local function shell_quote(s) return "'" .. s:gsub("'", "'\\''") .. "'" end
+
+local function is_runtime_secure(r)
+  if not r or r == "" then return false end
+  if r == "/tmp" then return false end
+  if r:sub(1, 1) ~= "/" then return false end
+  local q = shell_quote(r)
+  -- Must be a directory owned by the current user and, if stat is
+  -- available, mode 0700 (systemd's XDG_RUNTIME_DIR default). The
+  -- stat check is skipped when stat is missing so we don't fail-closed
+  -- on minimal containers.
+  local cmd = "test -d " .. q .. " && test -O " .. q .. " && { p=$(stat -c %a " .. q .. " 2>/dev/null); [ -z \"$p\" ] || [ \"$p\" = \"700\" ]; }"
+  local res = os.execute(cmd)
+  return res == 0 or res == true
+end
+
+local runtime = os.getenv("XDG_RUNTIME_DIR")
+if not is_runtime_secure(runtime) then
+  if runtime and runtime ~= "" then
+    print("[key-visualizer] insecure XDG_RUNTIME_DIR, disabling capture: " .. tostring(runtime))
+  else
+    print("[key-visualizer] XDG_RUNTIME_DIR not set, disabling capture")
+  end
+  runtime = nil
+end
+local STATE_FILE = runtime and (runtime .. "/omarchy-key-visualizer.json") or nil
+
+local function secure_write(path, content)
+  if not path then return false end
+  -- Reject the exact predictable fallback that the security review flagged.
+  -- A valid XDG_RUNTIME_DIR under /tmp with a random suffix and 0700 is
+  -- allowed because it passed is_runtime_secure().
+  if path == "/tmp/omarchy-key-visualizer.json" or path == "/tmp/omarchy-key-visualizer-super" then return false end
+  local q = shell_quote(path)
+  -- Refuse to follow a symlink at the destination (O_NOFOLLOW mitigation).
+  -- `test ! -L` succeeds when the file does not exist or is not a symlink;
+  -- it fails only when the destination is a symlink, which we must not follow.
+  local not_symlink = os.execute("test ! -L " .. q)
+  if not (not_symlink == 0 or not_symlink == true) then
+    print("[key-visualizer] refusing to write symlink: " .. path)
+    return false
+  end
+  local tmp = path .. ".tmp"
+  local f = io.open(tmp, "w")
+  if not f then return false end
+  f:write(content)
+  f:close()
+  os.execute("chmod 600 " .. shell_quote(tmp) .. " 2>/dev/null")
+  -- Atomic replace; avoids truncating a file that may have been swapped
+  -- between the symlink check and the open (TOCTOU mitigation).
+  local ok = os.rename(tmp, path)
+  if not ok then
+    os.execute("rm -f " .. shell_quote(tmp) .. " 2>/dev/null")
+    return false
+  end
+  os.execute("chmod 600 " .. q .. " 2>/dev/null")
+  return true
+end
 
 -- Modifier names, keyed by xkb keycode (evdev + 8).
 local MODS = {
@@ -130,6 +185,7 @@ end
 
 local last_payload = ""
 local function emit()
+  if not STATE_FILE then return end
   local parts = labels()
   local payload = '{"keys":['
   if #parts > 0 then
@@ -138,30 +194,23 @@ local function emit()
   payload = payload .. '],"t":' .. os.time() .. '}'
   if payload == last_payload then return end
   last_payload = payload
-  local f = io.open(STATE_FILE, "w")
-  if f then
-    f:write(payload)
-    f:close()
-  end
+  secure_write(STATE_FILE, payload)
 end
 
 -- Super-held flag: the panel/display watches this to know when to capture the
 -- SUPER+drag on the overlay (instead of a window underneath). Written only on
 -- transitions so it does not spam the filesystem on every key.
-local SUPER_FLAG = runtime .. "/omarchy-key-visualizer-super"
+local SUPER_FLAG = runtime and (runtime .. "/omarchy-key-visualizer-super") or nil
 local last_super = nil
 local function super_down()
   return pressed[133] or pressed[134]
 end
 local function emit_super()
+  if not SUPER_FLAG then return end
   local down = super_down()
   if down == last_super then return end
   last_super = down
-  local f = io.open(SUPER_FLAG, "w")
-  if f then
-    f:write(down and "1" or "0")
-    f:close()
-  end
+  secure_write(SUPER_FLAG, down and "1" or "0")
 end
 
 -- Combos: a combination of keys is treated as a unit. The display only

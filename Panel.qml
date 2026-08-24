@@ -40,7 +40,9 @@ Panel {
   // the visualizer renders the move like a real keypress.
   readonly property string statePath: {
     var runtime = Quickshell.env("XDG_RUNTIME_DIR")
-    return (runtime && runtime.length > 0 ? runtime : "/tmp") + "/omarchy-key-visualizer.json"
+    if (!runtime || runtime.length === 0) return ""
+    if (runtime === "/tmp") return ""
+    return runtime + "/omarchy-key-visualizer.json"
   }
 
   // Config lives outside the plugin folder (the shell reloads all plugin
@@ -125,10 +127,12 @@ Panel {
     var nx = Math.max(-2000, Math.min(2000, root.offsetX + dx * root.nudgeStep))
     var ny = Math.max(-2000, Math.min(2000, root.offsetY + dy * root.nudgeStep))
     root.writeConfig({ offsetX: nx, offsetY: ny })
+    if (!root.statePath || root.statePath.length === 0) return
+    if (root.statePath === "/tmp/omarchy-key-visualizer.json") return
     var arrow = dx < 0 ? "←" : dx > 0 ? "→" : dy < 0 ? "↑" : "↓"
     var now = Math.floor(Date.now() / 1000)
     nudgeKeyProc.command = ["sh", "-c",
-      "printf '%s' '" + JSON.stringify({ keys: [arrow], t: now }) + "' > " + Util.shellQuote(root.statePath)]
+      "if [ ! -L " + Util.shellQuote(root.statePath) + " ]; then umask 077; printf '%s' '" + JSON.stringify({ keys: [arrow], t: now }) + "' > " + Util.shellQuote(root.statePath) + " && chmod 600 " + Util.shellQuote(root.statePath) + "; fi"]
     nudgeKeyProc.running = true
     nudgeReleaseTimer.interval = 120
     nudgeReleaseTimer.restart()
@@ -161,9 +165,11 @@ Panel {
     interval: 120
     repeat: false
     onTriggered: {
+      if (!root.statePath || root.statePath.length === 0) return
+      if (root.statePath === "/tmp/omarchy-key-visualizer.json") return
       var now = Math.floor(Date.now() / 1000)
       nudgeKeyProc.command = ["sh", "-c",
-        "printf '%s' '" + JSON.stringify({ keys: [], t: now }) + "' > " + Util.shellQuote(root.statePath)]
+        "if [ ! -L " + Util.shellQuote(root.statePath) + " ]; then umask 077; printf '%s' '" + JSON.stringify({ keys: [], t: now }) + "' > " + Util.shellQuote(root.statePath) + " && chmod 600 " + Util.shellQuote(root.statePath) + "; fi"]
       nudgeKeyProc.running = true
     }
   }
