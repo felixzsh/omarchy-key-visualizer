@@ -225,7 +225,10 @@ Panel {
     owner: root
     bar: root.bar
     open: root.opened
-    contentWidth: Style.space(250)
+    contentWidth: panel.fittedContentWidth(
+      Math.max(Style.space(250),
+        filterLabel.implicitWidth + Style.spacing.xl + modeButtons.implicitWidth
+          + panel.padding * 2 + Border.left(panel.borderSpec) + Border.right(panel.borderSpec)))
     contentHeight: menuColumn.implicitHeight + panel.padding * 2
 
     Column {
@@ -295,6 +298,7 @@ Panel {
         height: modeButtons.height
 
         Text {
+          id: filterLabel
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
           text: "Filter"
