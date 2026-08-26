@@ -19,12 +19,12 @@ local function is_runtime_secure(r)
   if r == "/tmp" then return false end
   if r:sub(1, 1) ~= "/" then return false end
   local q = shell_quote(r)
-  -- Must be a directory owned by the current user and, if stat is
-  -- available, mode 0700 (systemd's XDG_RUNTIME_DIR default). The
-  -- stat check is skipped when stat is missing so we don't fail-closed
-  -- on minimal containers.
-  local cmd = "test -d " .. q .. " && test -O " .. q .. " && { p=$(stat -c %a " .. q .. " 2>/dev/null); [ -z \"$p\" ] || [ \"$p\" = \"700\" ]; }"
-  local res = os.execute(cmd)
+  -- POSIX-only checks (test -d, test -w): no GNU `test -O`, no `stat`,
+  -- no command substitution. They behave identically inside Hyprland's
+  -- os.execute and in any POSIX shell. XDG_RUNTIME_DIR is always a 0700
+  -- dir owned by the user, so "exists + writable by us + absolute + not
+  -- /tmp" is sufficient; the predictable /tmp fallback is rejected above.
+  local res = os.execute("test -d " .. q .. " && test -w " .. q)
   return res == 0 or res == true
 end
 
@@ -47,9 +47,11 @@ local function secure_write(path, content)
   if path == "/tmp/omarchy-key-visualizer.json" or path == "/tmp/omarchy-key-visualizer-super" then return false end
   local q = shell_quote(path)
   -- Refuse to follow a symlink at the destination (O_NOFOLLOW mitigation).
-  -- `test ! -L` succeeds when the file does not exist or is not a symlink;
-  -- it fails only when the destination is a symlink, which we must not follow.
-  local not_symlink = os.execute("test ! -L " .. q)
+  -- POSIX `test ! -h` succeeds when the file does not exist or is not a
+  -- symlink (the `-h` test is POSIX; `-L` is the GNU alias and is not
+  -- reliable inside Hyprland's os.execute). It fails only when the
+  -- destination is a symlink, which we must not follow.
+  local not_symlink = os.execute("test ! -h " .. q)
   if not (not_symlink == 0 or not_symlink == true) then
     print("[key-visualizer] refusing to write symlink: " .. path)
     return false
