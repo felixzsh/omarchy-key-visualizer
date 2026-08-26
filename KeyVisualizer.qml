@@ -995,6 +995,17 @@ Item {
     // Debug overlay: live readout of the card's position/dimensions and the
     // movement state, shown next to the card while moving and after release.
     // Toggle with: omarchy-shell key-visualizer debug
+    readonly property var debugFont: Qt.font({
+      family: Style.font.family,
+      pixelSize: Style.font.bodySmall,
+      bold: false
+    })
+
+    FontMetrics {
+      id: debugFontMetrics
+      font: debugFont
+    }
+
     BorderSurface {
       id: debugOverlay
       visible: root.debugOverlay
@@ -1012,7 +1023,7 @@ Item {
         anchors.fill: parent
         anchors.margins: root.cardPad
         verticalAlignment: Text.AlignVCenter
-        font: debugFont
+        font: root.debugFont
         color: Color.popups.text
         text: {
           var lb = "\n"
@@ -1025,16 +1036,6 @@ Item {
       }
     }
     readonly property bool debugDragging: dragArea.dragging
-
-    FontMetrics {
-      id: debugFontMetrics
-      font: debugFont
-    }
-    readonly property var debugFont: Qt.font({
-      family: Style.font.family,
-      pixelSize: Style.font.bodySmall,
-      bold: false
-    })
 
     // Combo mode banner — a separate visual stacked against the history
     // card (below it for bottom positions, above it for top positions).
