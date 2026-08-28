@@ -14,18 +14,28 @@
 
 local function shell_quote(s) return "'" .. s:gsub("'", "'\\''") .. "'" end
 
+local function effective_uid()
+  local f = io.open("/proc/self/status", "r")
+  if not f then return nil end
+  for line in f:lines() do
+    local uid = line:match("^Uid:%s+%d+%s+(%d+)")
+    if uid then
+      f:close()
+      return uid
+    end
+  end
+  f:close()
+  return nil
+end
+
 local function is_runtime_secure(r)
   if not r or r == "" then return false end
   if r == "/tmp" then return false end
   if r:sub(1, 1) ~= "/" then return false end
-  local q = shell_quote(r)
-  -- POSIX-only checks (test -d, test -w): no GNU `test -O`, no `stat`,
-  -- no command substitution. They behave identically inside Hyprland's
-  -- os.execute and in any POSIX shell. XDG_RUNTIME_DIR is always a 0700
-  -- dir owned by the user, so "exists + writable by us + absolute + not
-  -- /tmp" is sufficient; the predictable /tmp fallback is rejected above.
-  local res = os.execute("test -d " .. q .. " && test -w " .. q)
-  return res == 0 or res == true
+  -- /run/user is root-controlled, so accepting only this process's systemd
+  -- runtime path avoids shell probes that fail in Hyprland's Lua runtime.
+  local uid = effective_uid()
+  return uid ~= nil and r == "/run/user/" .. uid
 end
 
 local runtime = os.getenv("XDG_RUNTIME_DIR")
@@ -38,38 +48,17 @@ if not is_runtime_secure(runtime) then
   runtime = nil
 end
 local STATE_FILE = runtime and (runtime .. "/omarchy-key-visualizer.json") or nil
+local SUPER_FLAG = runtime and (runtime .. "/omarchy-key-visualizer-super") or nil
 
 local function secure_write(path, content)
-  if not path then return false end
-  -- Reject the exact predictable fallback that the security review flagged.
-  -- A valid XDG_RUNTIME_DIR under /tmp with a random suffix and 0700 is
-  -- allowed because it passed is_runtime_secure().
-  if path == "/tmp/omarchy-key-visualizer.json" or path == "/tmp/omarchy-key-visualizer-super" then return false end
-  local q = shell_quote(path)
-  -- Refuse to follow a symlink at the destination (O_NOFOLLOW mitigation).
-  -- POSIX `test ! -h` succeeds when the file does not exist or is not a
-  -- symlink (the `-h` test is POSIX; `-L` is the GNU alias and is not
-  -- reliable inside Hyprland's os.execute). It fails only when the
-  -- destination is a symlink, which we must not follow.
-  local not_symlink = os.execute("test ! -h " .. q)
-  if not (not_symlink == 0 or not_symlink == true) then
-    print("[key-visualizer] refusing to write symlink: " .. path)
-    return false
-  end
-  local tmp = path .. ".tmp"
-  local f = io.open(tmp, "w")
+  if not runtime or (path ~= STATE_FILE and path ~= SUPER_FLAG) then return false end
+  -- FileView watches the existing inode. These are fixed paths inside the
+  -- current user's private runtime directory, so update them in place.
+  local f = io.open(path, "w")
   if not f then return false end
   f:write(content)
   f:close()
-  os.execute("chmod 600 " .. shell_quote(tmp) .. " 2>/dev/null")
-  -- Atomic replace; avoids truncating a file that may have been swapped
-  -- between the symlink check and the open (TOCTOU mitigation).
-  local ok = os.rename(tmp, path)
-  if not ok then
-    os.execute("rm -f " .. shell_quote(tmp) .. " 2>/dev/null")
-    return false
-  end
-  os.execute("chmod 600 " .. q .. " 2>/dev/null")
+  os.execute("chmod 600 " .. shell_quote(path) .. " 2>/dev/null")
   return true
 end
 
@@ -202,7 +191,6 @@ end
 -- Super-held flag: the panel/display watches this to know when to capture the
 -- SUPER+drag on the overlay (instead of a window underneath). Written only on
 -- transitions so it does not spam the filesystem on every key.
-local SUPER_FLAG = runtime and (runtime .. "/omarchy-key-visualizer-super") or nil
 local last_super = nil
 local function super_down()
   return pressed[133] or pressed[134]
@@ -214,6 +202,11 @@ local function emit_super()
   last_super = down
   secure_write(SUPER_FLAG, down and "1" or "0")
 end
+
+-- Create stable files before Quickshell starts watching them and clear stale
+-- state left by a compositor restart.
+emit()
+emit_super()
 
 -- Combos: a combination of keys is treated as a unit. The display only
 -- updates on key-down (the combo grows as you press) and when the last key
