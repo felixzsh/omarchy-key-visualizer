@@ -41,21 +41,6 @@ jobs:
 
           FEATS=""
           FIXES=""
-          CONTRIBUTORS=""
-          declare -A SEEN_PRS=()
-          declare -A SEEN_CONTRIBUTORS=()
-
-          add_contributor() {
-            local login="$1"
-            local avatar="$2"
-            local profile="$3"
-            [ -z "$login" ] && return
-            [ -n "${SEEN_CONTRIBUTORS[$login]+x}" ] && return
-            SEEN_CONTRIBUTORS["$login"]=1
-            avatar="${avatar:-https://github.com/${login}.png?size=96}"
-            profile="${profile:-https://github.com/${login}}"
-            CONTRIBUTORS="${CONTRIBUTORS}<a href=\"${profile}\"><img src=\"${avatar}\" width=\"48\" height=\"48\" alt=\"@${login}\"></a> "
-          }
 
           parse_conventional() {
             local text="$1"
@@ -89,44 +74,13 @@ jobs:
 
             commit_login="$(gh api "repos/${REPO}/commits/${sha}" --jq '.author.login // empty')"
             commit_name="$(gh api "repos/${REPO}/commits/${sha}" --jq '.commit.author.name // empty')"
-            commit_avatar=""
             commit_profile=""
             if [ -n "$commit_login" ]; then
-              commit_avatar="$(gh api "repos/${REPO}/commits/${sha}" --jq '.author.avatar_url // empty')"
               commit_profile="$(gh api "repos/${REPO}/commits/${sha}" --jq '.author.html_url // empty')"
-              add_contributor "$commit_login" "$commit_avatar" "$commit_profile"
             fi
 
             pr="$(gh api "repos/${REPO}/commits/${sha}/pulls" --jq '.[0].number // empty')"
-            if [ -n "$pr" ]; then
-              pr_title="$(gh api "repos/${REPO}/pulls/${pr}" --jq '.title // empty')"
-              pr_login="$(gh api "repos/${REPO}/pulls/${pr}" --jq '.user.login // empty')"
-              pr_avatar="$(gh api "repos/${REPO}/pulls/${pr}" --jq '.user.avatar_url // empty')"
-              pr_profile="$(gh api "repos/${REPO}/pulls/${pr}" --jq '.user.html_url // empty')"
-              pr_url="$(gh api "repos/${REPO}/pulls/${pr}" --jq '.html_url // empty')"
-              add_contributor "$pr_login" "$pr_avatar" "$pr_profile"
-
-              # A conflict-resolution commit and the original PR commit can
-              # both be reachable from a release. Render the PR only once and
-              # attribute it to the PR author, never to the merge author.
-              if [ -z "${SEEN_PRS[$pr]+x}" ]; then
-                candidate="$pr_title"
-                if ! parse_conventional "$candidate"; then
-                  candidate="$subject"
-                  parse_conventional "$candidate" || true
-                fi
-                if [ -n "$ENTRY_TYPE" ]; then
-                  SEEN_PRS["$pr"]=1
-                  entry="- ${ENTRY_TITLE} ([#${pr}](${pr_url}))"
-                  entry="${entry}$(author_suffix "$pr_login" "$pr_profile" "$commit_name")"
-                  if [ "$ENTRY_TYPE" = "feat" ]; then
-                    FEATS="${FEATS}${entry}"$'\n'
-                  elif [ "$ENTRY_TYPE" = "fix" ]; then
-                    FIXES="${FIXES}${entry}"$'\n'
-                  fi
-                fi
-              fi
-            elif parse_conventional "$subject"; then
+            if [ -z "$pr" ] && parse_conventional "$subject"; then
               short="${sha:0:7}"
               url="https://github.com/${REPO}/commit/${sha}"
               entry="- ${ENTRY_TITLE} ([\`${short}\`](${url}))"
@@ -158,12 +112,6 @@ jobs:
               echo "_No relevant conventional commits (feat/fix) in this release._"
               echo ""
             fi
-            if [ -n "$CONTRIBUTORS" ]; then
-              echo "## Contributors"
-              echo ""
-              printf "%s\n" "$CONTRIBUTORS"
-              echo ""
-            fi
             echo "---"
             echo ""
             if [ -n "$PREV_TAG" ]; then
@@ -187,4 +135,4 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.notes }}
-          generate_release_notes: false
+          generate_release_notes: true
