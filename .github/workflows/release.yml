@@ -8,131 +8,13 @@ on:
 
 permissions:
   contents: write
-  pull-requests: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Generate changelog
-        id: changelog
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          REPO="${GITHUB_REPOSITORY}"
-
-          # previous tag (parent of this tag)
-          PREV_TAG="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")"
-
-          if [ -z "$PREV_TAG" ]; then
-            RANGE="HEAD"
-            echo "No previous tag, using all history"
-          else
-            RANGE="${PREV_TAG}..HEAD"
-            echo "Range: $RANGE"
-          fi
-
-          FEATS=""
-          FIXES=""
-
-          parse_conventional() {
-            local text="$1"
-            ENTRY_TYPE=""
-            ENTRY_TITLE=""
-            local pattern='^(feat|fix)(\([^)]*\))?!?:[[:space:]](.+)$'
-            if [[ "$text" =~ $pattern ]]; then
-              ENTRY_TYPE="${BASH_REMATCH[1]}"
-              ENTRY_TITLE="${BASH_REMATCH[3]}"
-              return 0
-            fi
-            return 1
-          }
-
-          author_suffix() {
-            local login="$1"
-            local profile="$2"
-            local name="$3"
-            if [ -n "$login" ]; then
-              printf ' by [@%s](%s)' "$login" "${profile:-https://github.com/${login}}"
-            elif [ -n "$name" ]; then
-              printf ' by %s' "$name"
-            fi
-          }
-
-          # %H = hash, %s = subject (first line)
-          while IFS= read -r line; do
-            [ -z "$line" ] && continue
-            sha="${line%%$'\t'*}"
-            subject="${line#*$'\t'}"
-
-            commit_login="$(gh api "repos/${REPO}/commits/${sha}" --jq '.author.login // empty')"
-            commit_name="$(gh api "repos/${REPO}/commits/${sha}" --jq '.commit.author.name // empty')"
-            commit_profile=""
-            if [ -n "$commit_login" ]; then
-              commit_profile="$(gh api "repos/${REPO}/commits/${sha}" --jq '.author.html_url // empty')"
-            fi
-
-            pr="$(gh api "repos/${REPO}/commits/${sha}/pulls" --jq '.[0].number // empty')"
-            if [ -z "$pr" ] && parse_conventional "$subject"; then
-              short="${sha:0:7}"
-              url="https://github.com/${REPO}/commit/${sha}"
-              entry="- ${ENTRY_TITLE} ([\`${short}\`](${url}))"
-              entry="${entry}$(author_suffix "$commit_login" "$commit_profile" "$commit_name")"
-              if [ "$ENTRY_TYPE" = "feat" ]; then
-                FEATS="${FEATS}${entry}"$'\n'
-              elif [ "$ENTRY_TYPE" = "fix" ]; then
-                FIXES="${FIXES}${entry}"$'\n'
-              fi
-            fi
-          done < <(git log "$RANGE" --format="%H%x09%s" --no-merges)
-
-          {
-            echo "# ${TAG}"
-            echo ""
-            if [ -n "$FEATS" ]; then
-              echo "## Features"
-              echo ""
-              printf "%s" "$FEATS"
-              echo ""
-            fi
-            if [ -n "$FIXES" ]; then
-              echo "## Fixes"
-              echo ""
-              printf "%s" "$FIXES"
-              echo ""
-            fi
-            if [ -z "$FEATS" ] && [ -z "$FIXES" ]; then
-              echo "_No relevant conventional commits (feat/fix) in this release._"
-              echo ""
-            fi
-            echo "---"
-            echo ""
-            if [ -n "$PREV_TAG" ]; then
-              echo "**Full diff:** [\`${PREV_TAG}...${TAG}\`](https://github.com/${REPO}/compare/${PREV_TAG}...${TAG})"
-            else
-              echo "**Full history up to ${TAG}**"
-            fi
-          } > /tmp/notes.md
-
-          cat /tmp/notes.md
-          # multiline output for next step
-          {
-            echo "notes<<EOF"
-            cat /tmp/notes.md
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          body: ${{ steps.changelog.outputs.notes }}
           generate_release_notes: true
