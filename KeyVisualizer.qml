@@ -472,7 +472,7 @@ Item {
     if (!root.paused) {
       try {
         var parsed = JSON.parse(stateFile.text())
-        if parsed && Array.isArray(parsed.keys) {
+        if (parsed && Array.isArray(parsed.keys)) {
           var age = Math.floor(Date.now() / 1000) - (parsed.t || 0)
           if (age <= Math.ceil(root.maxStateAgeMs / 1000)) next = parsed.keys
           if ((parsed.t || 0) > 0) root.lastStateT = parsed.t
