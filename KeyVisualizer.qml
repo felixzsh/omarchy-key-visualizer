@@ -29,6 +29,11 @@ Item {
   // it. The history tick prunes entries whose linger window passed. With
   // historyCount 1 this is exactly "the current combo, lingering".
   property var entries: []
+  // Epoch (seconds) of the last state payload we successfully parsed. Used
+  // to detect a dead capture: if no new payload arrives within maxStateAgeMs
+  // and the top combo was never released, we treat it as released so the
+  // panel self-heals instead of freezing on a stale combo forever.
+  property real lastStateT: 0
   // How many combos stay on screen (1..5, default 1). Older entries fade
   // out via the entryOpacity() gradient; a count of 1 is the classic
   // current-combo-only display.
@@ -467,9 +472,10 @@ Item {
     if (!root.paused) {
       try {
         var parsed = JSON.parse(stateFile.text())
-        if (parsed && Array.isArray(parsed.keys)) {
+        if parsed && Array.isArray(parsed.keys) {
           var age = Math.floor(Date.now() / 1000) - (parsed.t || 0)
           if (age <= Math.ceil(root.maxStateAgeMs / 1000)) next = parsed.keys
+          if ((parsed.t || 0) > 0) root.lastStateT = parsed.t
         }
       } catch (e) {}
     }    if (next.length > 0 && root.mode === "bindings") {
@@ -529,6 +535,16 @@ Item {
     repeat: true
     running: root.entries.length > 0
     onTriggered: {
+      // If the capture stopped updating (crashed, plugin unloaded, or a
+      // config reload disabled it), the top combo may be stuck with
+      // releasedAt === 0 forever because no empty "all keys up" payload
+      // ever arrives. Treat a stale state file as a release so the combo
+      // lingers normally and then clears, instead of freezing on screen.
+      if (root.entries.length > 0 && root.entries[0].releasedAt === 0 &&
+          root.lastStateT > 0 &&
+          Math.floor(Date.now() / 1000) - root.lastStateT > Math.ceil(root.maxStateAgeMs / 1000)) {
+        root.entries[0] = { keys: root.entries[0].keys, releasedAt: Date.now() }
+      }
       var now = Date.now()
       var kept = []
       for (var i = 0; i < root.entries.length; i++) {
@@ -995,6 +1011,17 @@ Item {
     // Debug overlay: live readout of the card's position/dimensions and the
     // movement state, shown next to the card while moving and after release.
     // Toggle with: omarchy-shell key-visualizer debug
+    readonly property var debugFont: Qt.font({
+      family: Style.font.family,
+      pixelSize: Style.font.bodySmall,
+      bold: false
+    })
+
+    FontMetrics {
+      id: debugFontMetrics
+      font: debugFont
+    }
+
     BorderSurface {
       id: debugOverlay
       visible: root.debugOverlay
@@ -1012,7 +1039,7 @@ Item {
         anchors.fill: parent
         anchors.margins: root.cardPad
         verticalAlignment: Text.AlignVCenter
-        font: debugFont
+        font: root.debugFont
         color: Color.popups.text
         text: {
           var lb = "\n"
@@ -1025,16 +1052,6 @@ Item {
       }
     }
     readonly property bool debugDragging: dragArea.dragging
-
-    FontMetrics {
-      id: debugFontMetrics
-      font: debugFont
-    }
-    readonly property var debugFont: Qt.font({
-      family: Style.font.family,
-      pixelSize: Style.font.bodySmall,
-      bold: false
-    })
 
     // Combo mode banner — a separate visual stacked against the history
     // card (below it for bottom positions, above it for top positions).

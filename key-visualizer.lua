@@ -32,9 +32,8 @@ local function is_runtime_secure(r)
   if not r or r == "" then return false end
   if r == "/tmp" then return false end
   if r:sub(1, 1) ~= "/" then return false end
-  -- Shell ownership probes fail from Hyprland's embedded Lua environment.
   -- /run/user is root-controlled, so accepting only this process's systemd
-  -- runtime path still excludes shared or caller-supplied directories.
+  -- runtime path avoids shell probes that fail in Hyprland's Lua runtime.
   local uid = effective_uid()
   return uid ~= nil and r == "/run/user/" .. uid
 end
@@ -53,10 +52,8 @@ local SUPER_FLAG = runtime and (runtime .. "/omarchy-key-visualizer-super") or n
 
 local function secure_write(path, content)
   if not runtime or (path ~= STATE_FILE and path ~= SUPER_FLAG) then return false end
-  -- FileView watches the existing inode, so replacing the path on every key
-  -- leaves Quickshell attached to an unlinked file. Updating in place keeps
-  -- the watcher live. The containing runtime directory is private to the
-  -- effective user and the two accepted paths are fixed above.
+  -- FileView watches the existing inode. These are fixed paths inside the
+  -- current user's private runtime directory, so update them in place.
   local f = io.open(path, "w")
   if not f then return false end
   f:write(content)
@@ -206,9 +203,8 @@ local function emit_super()
   secure_write(SUPER_FLAG, down and "1" or "0")
 end
 
--- Create both files when the hook loads. This clears stale state after a
--- compositor restart and gives FileView stable paths to watch before the
--- first keyboard event arrives.
+-- Create stable files before Quickshell starts watching them and clear stale
+-- state left by a compositor restart.
 emit()
 emit_super()
 
