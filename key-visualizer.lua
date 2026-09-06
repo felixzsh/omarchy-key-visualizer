@@ -90,6 +90,15 @@ local KEYS = {
   [87] = "KP1", [88] = "KP2", [89] = "KP3", [90] = "KP0", [91] = "KP.",
   [121] = "Mute", [122] = "Vol-", [123] = "Vol+",
   [94] = "\\", [51] = "\\",
+  -- Extended function keys (F13-F24), common on macros/layers and
+  -- programmable keyboards.
+  [191] = "F13", [192] = "F14", [193] = "F15", [194] = "F16", [195] = "F17", [196] = "F18",
+  [197] = "F19", [198] = "F20", [199] = "F21", [200] = "F22", [201] = "F23", [202] = "F24",
+  -- Media and laptop keys.
+  [171] = "Next", [172] = "Play", [173] = "Prev", [174] = "Stop",
+  [232] = "Bright-", [233] = "Bright+", [256] = "Mic Mute",
+  [124] = "Power", [150] = "Sleep", [148] = "Calc", [163] = "Mail",
+  [166] = "Back", [167] = "Forward", [225] = "Search",
 }
 
 -- Printable characters (US layout), unshifted.
@@ -149,7 +158,8 @@ local function key_label(kc, binding)
   local label = KEYS[kc]
   if label then return label end
   local ch = CHARS[kc]
-  if not ch then return nil end
+  -- Unknown key: show its evdev code instead of dropping it silently.
+  if not ch then return "Key " .. (kc - 8) end
   if binding then return string.upper(ch) end
   if shift_down() then
     return SHIFTED[kc] or string.upper(ch)
