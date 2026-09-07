@@ -99,6 +99,13 @@ local KEYS = {
   [232] = "Bright-", [233] = "Bright+", [256] = "Mic Mute",
   [124] = "Power", [150] = "Sleep", [148] = "Calc", [163] = "Mail",
   [166] = "Back", [167] = "Forward", [225] = "Search",
+  [158] = "WWW", [164] = "Bookmarks", [165] = "Computer", [162] = "Cycle Windows",
+  [152] = "File", [179] = "Config", [180] = "Home", [181] = "Refresh",
+  [169] = "Eject", [170] = "Eject Close", [236] = "Kbd Light", [237] = "Kbd Light-",
+  [238] = "Kbd Light+", [244] = "Battery", [245] = "Bluetooth", [246] = "WLAN",
+  [234] = "Media", [439] = "Display", [452] = "Notification",
+  [538] = "Touchpad", [539] = "Touchpad On", [540] = "Touchpad Off",
+  [599] = "Do Not Disturb",
 }
 
 -- Printable characters (US layout), unshifted.
