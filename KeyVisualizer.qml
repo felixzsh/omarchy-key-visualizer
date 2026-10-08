@@ -67,9 +67,10 @@ Item {
   // combo counter, apply a multiplier and escalate the effects. Plain
   // characters (and shifted chars typed alone, which the Lua folds into
   // the character) are HITs: basic score only, they never touch the combo
-  // counter or its window. Counted when the chord completes (the Lua's
-  // empty payload), so one physical chord is exactly one press even though
-  // the Lua emits intermediate growing states while keys are added.
+  // counter or its window. Counted when the chord completes (the Lua's done
+  // payload: its last non-modifier key released, even while a modifier is
+  // still held), so one physical chord is exactly one press even though the
+  // Lua emits intermediate growing states while keys are added.
   property bool comboMode: false
   property int comboCount: 0
   property int comboScore: 0
@@ -194,28 +195,22 @@ Item {
     return Math.max(lo, Math.min(hi, v))
   }
 
-  function groupWidth() {
-    return card.width
-  }
-
   function groupHeight() {
     if (root.bannerVisible()) return card.height + root.bannerHeight + root.bannerGap
     return card.height
   }
 
+  // The combo banner is always centered on the card, so when it is wider it
+  // overhangs both sides symmetrically. These are the distances from the
+  // card's edges to the group's (signed: negative grows left), used by the
+  // card.x clamp to keep the whole group (card + banner) on screen.
   function groupLeftOffset() {
     if (!root.bannerVisible()) return 0
-    var mode = root.sideMode()
-    if (mode === "left") return 0
-    if (mode === "right") return Math.min(0, card.width - banner.width)
     return Math.min(0, (card.width - banner.width) / 2)
   }
 
   function groupRightOffset() {
     if (!root.bannerVisible()) return card.width
-    var mode = root.sideMode()
-    if (mode === "left") return Math.max(card.width, banner.width)
-    if (mode === "right") return card.width
     return Math.max(card.width, (card.width + banner.width) / 2)
   }
 
@@ -242,26 +237,6 @@ Item {
     return panel.height - root.margin - borderBottom - root.cardPad - root.chipHeight
   }
 
-  // Combo-banner horizontal anchor, computed from the card's *target* position
-  // (preset + offset, pre-clamp) so it never feeds back into the clamp. The
-  // banner anchors to the card's outward edge and grows toward the screen
-  // center: "left" grows right, "right" grows left, "center" stays centered
-  // (the look for centered presets, e.g. bottom-center by default).
-  function sideMode() {
-    if (!root.bannerVisible()) return "center"
-    var base = 0
-    var p = root.position
-    if (p.indexOf("left") !== -1) base = root.margin
-    else if (p.indexOf("right") !== -1) base = panel.width - root.groupWidth() - root.margin
-    else base = Math.round((panel.width - root.groupWidth()) / 2)
-    var target = base + root.offsetX
-    var distLeft = target
-    var distRight = panel.width - (target + root.groupWidth())
-    if (distLeft < distRight) return "left"
-    if (distRight < distLeft) return "right"
-    return "center"
-  }
-
   // History stacking direction derived from the adaptive anchor. Recomputed
   // after drag release / offset changes so it follows the card.
   function stackDown() {
@@ -281,6 +256,16 @@ Item {
     var sb = b.slice().sort()
     for (var i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return false
     return true
+  }
+
+  // Merge two key lists preserving first-list order, so a finished chord
+  // keeps its display order and only gains keys the entry missed (e.g. when
+  // the file watcher coalesced a grow update with the done payload).
+  function unionKeys(a, b) {
+    var out = a.slice()
+    if (!b) return out
+    for (var i = 0; i < b.length; i++) if (out.indexOf(b[i]) === -1) out.push(b[i])
+    return out
   }
 
   // Strict superset: every key of `base` is in `next` and `next` has more
@@ -479,41 +464,65 @@ Item {
 
   function apply() {
     var next = []
+    var done = false
+    var chord = null
     if (!root.paused) {
       try {
         var parsed = JSON.parse(stateFile.text())
         if (parsed && Array.isArray(parsed.keys)) {
           var age = Math.floor(Date.now() / 1000) - (parsed.t || 0)
-          if (age <= Math.ceil(root.maxStateAgeMs / 1000)) next = parsed.keys
+          if (age <= Math.ceil(root.maxStateAgeMs / 1000)) {
+            next = parsed.keys
+            // done: the chord closed, either because its last non-modifier
+            // key went up — modifiers may still be held, so Super held while
+            // tapping 1, 2, 3 must count each tap — or because every key
+            // went up (a plain empty payload; what capture scripts emitted
+            // before the done flag existed). `chord` is the finished chord
+            // when the done payload carries one.
+            done = parsed.done === true || next.length === 0
+            if (parsed.done === true && Array.isArray(parsed.chord)) chord = parsed.chord
+          }
           if ((parsed.t || 0) > 0) root.lastStateT = parsed.t
         }
       } catch (e) {}
-    }    if (next.length > 0 && root.mode === "bindings") {
+    }
+    if (next.length > 0 && root.mode === "bindings") {
       var hasMod = false
       for (var i = 0; i < next.length; i++) {
         if (root.modLabels.indexOf(next[i]) !== -1) { hasMod = true; break }
       }
       if (!hasMod) next = []
     }
+    // In bindings mode a plain chord never counts, however it arrives.
+    if (chord && root.mode === "bindings" && root.modCountOf(chord) === 0) chord = null
     var es = root.entries.slice()
-    if (next.length === 0) {
-      // All keys released: the newest combo enters its linger window; the
-      // history tick prunes it once lingerMs passes. This empty payload is
-      // also the chord-completion signal: the full combo that just ended is
-      // the one being pushed into its linger window, so count it exactly
-      // once here (never on the intermediate growing emits).
-      if (es.length > 0 && es[0].releasedAt === 0) {
-        var completed = es[0].keys.slice()
+    if (done || next.length === 0) {
+      // The chord finished: this is where a physical press turns into
+      // exactly one scored combo/hit (never on the Lua's intermediate
+      // growing emits). The finished chord is the live top entry plus any
+      // keys the done payload adds: the payload carries what the Lua saw
+      // while releasing, which can be a subset of the entry when a modifier
+      // went up first, or a superset when a grow update was coalesced away.
+      var held = es.length > 0 && es[0].releasedAt === 0
+      var finished = held ? root.unionKeys(es[0].keys.slice(), chord)
+        : (chord ? chord.slice() : null)
+      if (finished === null) {
+        // Nothing on screen and nothing finished (all settled already).
+      } else if (root.modCountOf(finished) >= finished.length) {
         // A chord made only of modifiers is "mods of nothing": it scores
         // nothing, so it must not linger or occupy a history row either.
         // Drop it the moment the keys go up (it still shows live while
         // held, which is the useful feedback).
-        if (root.modCountOf(completed) >= completed.length) {
-          es.shift()
+        if (held) es.shift()
+      } else {
+        if (held) {
+          es[0] = { keys: finished, releasedAt: Date.now() }
         } else {
-          es[0] = { keys: es[0].keys, releasedAt: Date.now() }
-          root.pressCombo(completed)
+          // The chord was never displayed (e.g. the watcher coalesced the
+          // grow and the done write into one read): show it as finished.
+          es.unshift({ keys: finished, releasedAt: Date.now() })
         }
+        root.pressCombo(finished)
       }
     } else if (es.length > 0 && root.sameKeys(es[0].keys, next)) {
       // Same combo re-pressed (or the state file re-fired): refresh it,
@@ -910,13 +919,12 @@ Item {
       // would cross a screen edge is silently ignored.
       x: {
         var p = root.position
-        var gW = root.groupWidth()
         var lo = -root.groupLeftOffset()
         var hi = panel.width - root.groupRightOffset()
         var base = 0
         if (p.indexOf("left") !== -1) base = root.margin
-        else if (p.indexOf("right") !== -1) base = panel.width - gW - root.margin
-        else base = Math.round((panel.width - gW) / 2)
+        else if (p.indexOf("right") !== -1) base = panel.width - card.width - root.margin
+        else base = Math.round((panel.width - card.width) / 2)
         return root.clamp(base + root.offsetX, lo, hi) + root.shakeX
       }
       // The card's Y is derived so the newest row sits at offsetY (stable in
@@ -1067,17 +1075,13 @@ Item {
       visible: root.bannerVisible()
       width: root.comboBannerWidth()
       height: root.bannerHeight
-      // The banner anchors to the card's outward edge so it grows toward the
-      // screen center (left-anchored when the card is on the left, right-
-      // anchored when on the right, centered otherwise); the group clamp on
-      // the card keeps it on screen. Vertically it tracks the group Y0 so it
-      // stays stacked with the card as the offset moves.
-      x: {
-        var mode = root.sideMode()
-        if (mode === "left") return card.x
-        if (mode === "right") return card.x + card.width - width
-        return card.x + (card.width - width) / 2
-      }
+      // Always centered on the card: the score banner and the history share
+      // one vertical axis, wherever the card sits (left/right presets and
+      // dragged offsets included). When the banner is wider it overhangs
+      // both sides symmetrically; the group clamp on the card keeps it on
+      // screen. Vertically it tracks the group Y0 so it stays stacked with
+      // the card as the offset moves.
+      x: card.x + (card.width - width) / 2
       y: {
         if (root.isTopHalf) return card.y - height - root.bannerGap + root.shakeY
         return card.y + card.height + root.bannerGap + root.shakeY

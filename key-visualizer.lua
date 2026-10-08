@@ -192,14 +192,22 @@ local function labels()
 end
 
 local last_payload = ""
-local function emit()
+-- Publishes the current label set. `finished` marks the payload as the end of
+-- a chord: its keys travel as `chord` next to the currently held keys, and
+-- the panel counts the combination exactly once. Without it, the payload is
+-- a plain live-state update.
+local function emit(finished)
   if not STATE_FILE then return end
   local parts = labels()
   local payload = '{"keys":['
   if #parts > 0 then
     payload = payload .. '"' .. table.concat(parts, '","') .. '"'
   end
-  payload = payload .. '],"t":' .. os.time() .. '}'
+  payload = payload .. '],"t":' .. os.time()
+  if finished and #finished > 0 then
+    payload = payload .. ',"done":true,"chord":["' .. table.concat(finished, '","') .. '"]'
+  end
+  payload = payload .. '}'
   if payload == last_payload then return end
   last_payload = payload
   secure_write(STATE_FILE, payload)
@@ -226,11 +234,11 @@ emit()
 emit_super()
 
 -- Combos: a combination of keys is treated as a unit. The display only
--- updates on key-down (the combo grows as you press) and when the last key
--- is released (the empty payload starts the panel's linger with the last
--- full combo). Intermediate releases never shrink the display, so the order
--- in which you let go of a shortcut doesn't matter: Ctrl+Shift+N stays
--- Ctrl+Shift+N whether you release Ctrl, Shift, or N first.
+-- updates on key-down (the combo grows as you press) and when the chord
+-- completes: the release of its last non-modifier key (the done payload).
+-- Intermediate releases never shrink the display, so the order in which you
+-- let go of a shortcut doesn't matter: Ctrl+Shift+N stays Ctrl+Shift+N
+-- whether you release Ctrl, Shift, or N first.
 --
 -- state: 0 = released, 1 = pressed, 2 = repeat (ignored).
 hl.on("input.keyboard.key", function(keycode, timeMs, state)
@@ -250,20 +258,31 @@ hl.on("input.keyboard.key", function(keycode, timeMs, state)
   else
     pressed[keycode] = false
     emit_super()
+    local finished = nil
     if not MODS[keycode] then
       for i, kc in ipairs(combo) do
         if kc == keycode then
+          -- This is the chord's last non-modifier key: capture the full
+          -- chord before dropping it. It is what the done payload describes.
+          if #combo == 1 then finished = labels() end
           table.remove(combo, i)
           break
         end
       end
     end
-    -- Only emit when the last key goes up: intermediate releases keep the
-    -- full combo on screen (the panel lingers it after the empty payload).
-    local any_down = false
-    for _, down in pairs(pressed) do
-      if down then any_down = true break end
+    if finished then
+      -- The chord's last non-modifier key went up. Emit the completion even
+      -- if a modifier is still held (Super held while tapping 1, 2, 3...),
+      -- so the panel counts each tap as its own combo instead of waiting
+      -- for every key to be released. Intermediate releases (another
+      -- non-modifier key still down) keep the full combo on screen.
+      emit(finished)
+    else
+      local any_down = false
+      for _, down in pairs(pressed) do
+        if down then any_down = true break end
+      end
+      if not any_down then emit() end
     end
-    if not any_down then emit() end
   end
 end)

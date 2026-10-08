@@ -63,7 +63,9 @@ omarchy-shell key-visualizer resume
   ones fading out. Top positions stack downward, bottom positions upward.
 - **Combo mode** — a game counter. Combos with modifiers score points and
   build a streak (multiplier up to ×8); plain typing scores a little too.
-  The banner shows `COMBO 12 ×3 · 3,450`. The longer the streak, the bigger
+  The banner shows `COMBO 12 ×3 · 3,450` centered on the history, and a
+  held modifier counts every tap as its own combo — hold Super and tap
+  1, 2, 3 to watch the counter climb. The longer the streak, the bigger
   the effects: pulsing, color shifts, screen shake — and at high streaks a
   constant vibration. Stop for a moment and the streak resets; when the
   display fades away, the score resets too.
