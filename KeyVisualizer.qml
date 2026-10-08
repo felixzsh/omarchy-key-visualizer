@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 // Key Visualizer — shows the keys you press as small chips at the bottom of
@@ -401,7 +402,7 @@ Item {
   // color (hits); otherwise in the animated combo hue.
   function popScore(text, hue) {
     scorePop.text = text
-    scorePop.color = hue < 0 ? Color.popups.text : Qt.hsva(hue, 0.85, 1)
+    scorePop.color = hue < 0 ? Commons.Color.popups.text : Qt.hsva(hue, 0.85, 1)
     scorePop.visible = true
     popAnim.restart()
   }
@@ -435,7 +436,7 @@ Item {
   }
 
   function comboBannerColor() {
-    if (root.comboCount <= 0) return Color.popups.text
+    if (root.comboCount <= 0) return Commons.Color.popups.text
     return Qt.hsva(root.comboHue, 0.85, 1)
   }
 
@@ -920,8 +921,8 @@ Item {
         else if (groupBottom > panel.height) cy -= (groupBottom - panel.height)
         return cy + root.shakeY
       }
-      color: Util.alpha(Color.popups.background, 0.97)
-      borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
+      color: Util.alpha(Commons.Color.popups.background, 0.97)
+      borderSpec: Border.surfaceSpec("popups", "border", Commons.Color.popups.border, Math.max(1, Style.space(2)))
       radius: Style.cornerRadius
 
       Column {
@@ -948,15 +949,15 @@ Item {
                 width: root.chipWidth(modelData)
                 height: root.chipHeight
                 radius: Math.max(3, Style.cornerRadius - 1)
-                color: Util.alpha(Color.popups.text, 0.10)
-                border.color: Util.alpha(Color.popups.text, 0.35)
+                color: Util.alpha(Commons.Color.popups.text, 0.10)
+                border.color: Util.alpha(Commons.Color.popups.text, 0.35)
                 border.width: 1
 
                 Text {
                   anchors.centerIn: parent
                   text: parent.modelData
                   font: root.chipFont
-                  color: Color.popups.text
+                  color: Commons.Color.popups.text
                 }
               }
             }
@@ -1030,8 +1031,8 @@ Item {
       x: card.x + card.width + Style.space(12)
       y: card.y
       z: 10
-      color: Util.alpha(Color.popups.background, 0.95)
-      borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(1)))
+      color: Util.alpha(Commons.Color.popups.background, 0.95)
+      borderSpec: Border.surfaceSpec("popups", "border", Commons.Color.popups.border, Math.max(1, Style.space(1)))
       radius: Style.cornerRadius
 
       Text {
@@ -1040,7 +1041,7 @@ Item {
         anchors.margins: root.cardPad
         verticalAlignment: Text.AlignVCenter
         font: root.debugFont
-        color: Color.popups.text
+        color: Commons.Color.popups.text
         text: {
           var lb = "\n"
           return "x=" + Math.round(card.x) + " y=" + Math.round(card.y)
@@ -1078,7 +1079,7 @@ Item {
         if (root.isTopHalf) return card.y - height - root.bannerGap + root.shakeY
         return card.y + card.height + root.bannerGap + root.shakeY
       }
-      color: Util.alpha(Color.popups.background, 0.97)
+      color: Util.alpha(Commons.Color.popups.background, 0.97)
       borderSpec: Border.surfaceSpec("popups", "border", root.comboBannerColor(), Math.max(1, Style.space(2)))
       radius: Style.cornerRadius
       scale: root.bannerScale
