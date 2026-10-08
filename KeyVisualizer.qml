@@ -466,6 +466,15 @@ Item {
     font: bannerFont
   }
 
+  // Font for the debug overlay (see debugOverlay below). Declared on the root
+  // object because both its users live under the PanelWindow, which cannot
+  // reach a bare identifier declared on the window itself.
+  readonly property var debugFont: Qt.font({
+    family: Style.font.family,
+    pixelSize: Style.font.bodySmall,
+    bold: false
+  })
+
   // ------------------------------------------------------------- state
 
   function apply() {
@@ -1012,15 +1021,9 @@ Item {
     // Debug overlay: live readout of the card's position/dimensions and the
     // movement state, shown next to the card while moving and after release.
     // Toggle with: omarchy-shell key-visualizer debug
-    readonly property var debugFont: Qt.font({
-      family: Style.font.family,
-      pixelSize: Style.font.bodySmall,
-      bold: false
-    })
-
     FontMetrics {
       id: debugFontMetrics
-      font: debugFont
+      font: root.debugFont
     }
 
     BorderSurface {
