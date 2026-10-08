@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Ui
 import qs.Commons
+import qs.Commons as Commons
 
 // Bar control for the Key Visualizer. The keyboard glyph opens a small menu
 // (KeyboardPanel, the native bar popup) with:
@@ -247,7 +248,7 @@ Panel {
           text: "Show keys"
           font.family: Style.font.family
           font.pixelSize: Style.font.body
-          color: Color.popups.text
+          color: Commons.Color.popups.text
         }
 
         ToggleSwitch {
@@ -255,8 +256,8 @@ Panel {
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           checked: !root.paused
-          foreground: Color.popups.text
-          accent: Color.accent
+          foreground: Commons.Color.popups.text
+          accent: Commons.Color.accent
           // ToggleSwitch does not flip `checked` itself — it only emits
           // toggled() and the caller owns the value. Flip the real state;
           // the checked binding follows.
@@ -278,7 +279,7 @@ Panel {
           text: "Combo mode"
           font.family: Style.font.family
           font.pixelSize: Style.font.body
-          color: Color.popups.text
+          color: Commons.Color.popups.text
         }
 
         ToggleSwitch {
@@ -286,8 +287,8 @@ Panel {
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           checked: root.comboMode
-          foreground: Color.popups.text
-          accent: Color.accent
+          foreground: Commons.Color.popups.text
+          accent: Commons.Color.accent
           onToggled: root.writeConfig({ comboMode: !root.comboMode })
         }
       }
@@ -304,7 +305,7 @@ Panel {
           text: "Filter"
           font.family: Style.font.family
           font.pixelSize: Style.font.body
-          color: Color.popups.text
+          color: Commons.Color.popups.text
         }
 
         Row {
@@ -316,15 +317,15 @@ Panel {
           Button {
             text: "All keys"
             selected: root.mode !== "bindings"
-            foreground: Color.popups.text
-            accent: Color.accent
+            foreground: Commons.Color.popups.text
+            accent: Commons.Color.accent
             onClicked: root.writeConfig({ mode: "all" })
           }
           Button {
             text: "Bindings"
             selected: root.mode === "bindings"
-            foreground: Color.popups.text
-            accent: Color.accent
+            foreground: Commons.Color.popups.text
+            accent: Commons.Color.accent
             onClicked: root.writeConfig({ mode: "bindings" })
           }
         }
@@ -425,7 +426,7 @@ Panel {
 
         Text {
           text: "Linger (seconds)"
-          color: Qt.darker(Color.popups.text, 1.4)
+          color: Qt.darker(Commons.Color.popups.text, 1.4)
           font.family: Style.font.family
           font.pixelSize: Style.font.caption
           font.bold: true
@@ -457,7 +458,7 @@ Panel {
           Text {
             visible: root.lingerMs === 0
             text: "never hide"
-            color: Qt.darker(Color.popups.text, 1.35)
+            color: Qt.darker(Commons.Color.popups.text, 1.35)
             font.family: Style.font.family
             font.pixelSize: Style.font.body
             Layout.alignment: Qt.AlignVCenter
@@ -475,7 +476,7 @@ Panel {
 
         Text {
           text: "History (count)"
-          color: Qt.darker(Color.popups.text, 1.4)
+          color: Qt.darker(Commons.Color.popups.text, 1.4)
           font.family: Style.font.family
           font.pixelSize: Style.font.caption
           font.bold: true
